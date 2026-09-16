@@ -307,7 +307,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                             }
                         }}
                         style={{
-                            padding: '10px 16px 4px',
+                            padding: '6px 16px 4px',
                             borderBottom: `1px solid ${withAlpha(centerColor, 0.1)}`,
                             cursor: 'pointer',
                             color: centerColor,
@@ -403,7 +403,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '12px 16px',
+                    padding: '6px 16px',
                     borderBottom: `1px solid ${withAlpha(centerColor, 0.15)}`,
                 }}
             >
