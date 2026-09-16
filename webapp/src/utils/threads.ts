@@ -35,6 +35,10 @@ const FALLBACK_PAGE_SIZE = 100;
 // When paging to older months, silently skip up to this many empty months.
 const MAX_EMPTY_MONTHS_TO_SKIP = 24;
 
+// Search paging: the server caps one page, so fetch month results in pages.
+const SEARCH_PAGE_SIZE = 100;
+const MAX_SEARCH_PAGES = 10;
+
 function sortThreads(threads: MyThread[]): MyThread[] {
     threads.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
     return threads;
@@ -60,15 +64,33 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
     const channelTerm = (ctx.isPrivateChannel ? '~' : '') + ctx.channelName;
     const terms = `in:${channelTerm} from:${ctx.username} after:${after} before:${before}`;
 
-    const results = await Client4.searchPosts(teamId, terms, false);
-    const roots = results.order.
-        map((id) => (results.posts ? results.posts[id] : undefined)).
-        flatMap((post) => {
-            if (!post || post.root_id !== '' || post.delete_at) {
-                return [];
+    // The server caps a single search page (default ~60 posts); without
+    // paging, active users' replies push their older root posts out of the
+    // first page. Page through explicitly.
+    const collected = new Map<string, Post>();
+    for (let page = 0; page < MAX_SEARCH_PAGES; page++) {
+        // Search pages must be fetched sequentially to stop early.
+        // eslint-disable-next-line no-await-in-loop
+        const results = await Client4.searchPostsWithParams(teamId, {
+            terms,
+            is_or_search: false,
+            page,
+            per_page: SEARCH_PAGE_SIZE,
+        } as never);
+        let added = 0;
+        for (const id of results.order) {
+            const post = results.posts ? results.posts[id] : undefined;
+            if (post && !collected.has(id)) {
+                collected.set(id, post);
+                added++;
             }
-            return [post];
-        });
+        }
+        if (added < SEARCH_PAGE_SIZE) {
+            break;
+        }
+    }
+
+    const roots = [...collected.values()].filter((post) => post.root_id === '' && !post.delete_at);
 
     const details = await Promise.allSettled(roots.map((root) => Client4.getUserThread(userId, teamId, root.id)));
 
