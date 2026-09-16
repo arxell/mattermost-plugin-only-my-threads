@@ -259,7 +259,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                             }
                         }}
                         style={{
-                            padding: '10px 16px',
+                            padding: '10px 16px 4px',
                             borderBottom: `1px solid ${withAlpha(centerColor, 0.1)}`,
                             cursor: 'pointer',
                             color: centerColor,
@@ -290,7 +290,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                                 <button
                                     className={'btn btn-tertiary'}
                                     title={t('panel.showInChannel')}
-                                    style={{padding: '0 4px', border: '0', background: 'transparent', color: linkColor, cursor: 'pointer', fontSize: '13px', lineHeight: 1}}
+                                    style={{display: 'inline-flex', alignItems: 'center', height: '20px', padding: '0 4px', border: '0', background: 'transparent', color: linkColor, cursor: 'pointer', fontSize: '13px', lineHeight: 1}}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         jumpToPost(thread);
