@@ -265,7 +265,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                             color: centerColor,
                         }}
                     >
-                        <div style={{fontSize: '13px', lineHeight: '1.4', marginBottom: '4px'}}>
+                        <div style={{fontSize: '15px', lineHeight: '1.45', marginBottom: '4px'}}>
                             {messageToSnippet(thread.message, {
                                 codeLabel: t('snippet.code'),
                                 imageLabel: t('snippet.image'),
