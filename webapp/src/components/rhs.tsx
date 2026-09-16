@@ -324,9 +324,11 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                                 {formatDateTime(thread.lastActivityAt)}
                             </span>
                             {thread.awaitingReply ? (
-                                <span style={{fontSize: '12px', color: secondaryColor}}>
-                                    {'⏳ '}
-                                    {t('panel.awaiting')}
+                                <span
+                                    style={{fontSize: '12px', color: secondaryColor}}
+                                    title={t('panel.awaiting')}
+                                >
+                                    {'⏳'}
                                 </span>
                             ) : (
                                 <span style={{fontSize: '13px', color: linkColor}}>
