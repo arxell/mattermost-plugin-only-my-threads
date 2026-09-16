@@ -10,6 +10,7 @@ import {fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from 'utils/thread
 import type {GlobalState} from '@mattermost/types/store';
 
 import {receivedPosts, receivedPostsInThread} from 'mattermost-redux/actions/posts';
+import {deletePreferences, savePreferences} from 'mattermost-redux/actions/preferences';
 import {Client4} from 'mattermost-redux/client';
 import {getCurrentChannel} from 'mattermost-redux/selectors/entities/channels';
 import {getTheme} from 'mattermost-redux/selectors/entities/preferences';
@@ -60,6 +61,7 @@ const ITEM_TOOLBAR_CSS = `
 
 // Fallback colors used when the theme is not (yet) available in the store.
 const FALLBACK_TEXT = '#1f4157';
+const FALLBACK_LINK = '#166de0';
 const FALLBACK_ERROR = '#d24b4e';
 
 const getPostedSeq = (state: GlobalState): number => {
@@ -116,9 +118,11 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const teamName = team?.name;
 
     const centerColor = theme.centerChannelColor || FALLBACK_TEXT;
+    const linkColor = theme.linkColor || FALLBACK_LINK;
     const errorColor = theme.errorTextColor || FALLBACK_ERROR;
     const secondaryColor = withAlpha(centerColor, 0.6);
     const toolbarBg = theme.centerChannelBg || '#ffffff';
+    const myPreferences = useSelector((state: GlobalState) => state.entities.preferences.myPreferences);
 
     // Switching the channel resets pagination.
     useEffect(() => {
@@ -219,6 +223,18 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         }
     };
 
+    // Toggles the thread's root post in the host's Saved Messages, which is
+    // the per-user "saved_post" preference.
+    const toggleSaved = (thread: MyThread) => {
+        if (!userId) {
+            return;
+        }
+        const preference = {user_id: userId, category: 'saved_post', name: thread.id, value: 'true'};
+        const isSaved = myPreferences[`saved_post--${thread.id}`] !== undefined;
+        const action = isSaved ? deletePreferences(userId, [preference]) : savePreferences(userId, [preference]);
+        (store.dispatch as (a: unknown) => unknown)(action);
+    };
+
     // Opens the thread in the right-hand sidebar with its reply composer,
     // like the host's own Saved Messages panel does. The raw post is put
     // into the store first so old threads render without extra fetching.
@@ -231,6 +247,13 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                 channelId: thread.channelId,
                 timestamp: Date.now(),
             });
+
+            // The host thread view's virtual list sometimes measures its
+            // container as zero-sized right after the panel swap and renders
+            // empty. A resize nudge forces the re-measure.
+            [50, 300].forEach((delay) => setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+            }, delay));
 
             // Preload the full thread so the reply composer shows up at once;
             // the host would fetch it on its own, just slower. Thread views
@@ -310,8 +333,21 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                                 imageLabel: t('snippet.image'),
                             })}
                         </div>
-                        <div style={{fontSize: '12px', color: secondaryColor}}>
-                            {formatDateTime(thread.lastActivityAt)}
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                            <span style={{fontSize: '12px', color: secondaryColor}}>
+                                {formatDateTime(thread.lastActivityAt)}
+                            </span>
+                            {thread.awaitingReply ? (
+                                <span style={{fontSize: '12px', color: secondaryColor}}>
+                                    {'⏳ '}
+                                    {t('panel.awaiting')}
+                                </span>
+                            ) : (
+                                <span style={{fontSize: '13px', color: linkColor}}>
+                                    {'💬 '}
+                                    {thread.replyCount}
+                                </span>
+                            )}
                         </div>
                         <div
                             className={'omt-toolbar'}
@@ -326,6 +362,27 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                                 toolbar buttons never take focus on click. */}
                             <button
                                 className={'omt-btn'}
+                                title={myPreferences[`saved_post--${thread.id}`] === undefined ? t('panel.save') : t('panel.unsave')}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleSaved(thread);
+                                }}
+                            >
+                                <svg
+                                    width={'13'}
+                                    height={'13'}
+                                    viewBox={'0 0 24 24'}
+                                    fill={myPreferences[`saved_post--${thread.id}`] === undefined ? 'none' : 'currentColor'}
+                                    stroke={'currentColor'}
+                                    strokeWidth={'2'}
+                                    aria-hidden={true}
+                                >
+                                    <path d={'M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z'}/>
+                                </svg>
+                            </button>
+                            <button
+                                className={'omt-btn'}
                                 title={t('panel.reply')}
                                 onMouseDown={(e) => e.preventDefault()}
                             >
@@ -338,7 +395,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                                 >
                                     <path d={'M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z'}/>
                                 </svg>
-                                {`${t('panel.reply')} (${thread.replyCount})`}
+                                {t('panel.reply')}
                             </button>
                             <button
                                 className={'omt-btn'}
@@ -383,14 +440,9 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                     borderBottom: `1px solid ${withAlpha(centerColor, 0.15)}`,
                 }}
             >
-                <div>
-                    <div style={{fontWeight: 600, color: centerColor}}>
-                        {t('panel.title')}
-                    </div>
-                    <div style={{fontSize: '12px', color: secondaryColor}}>
-                        {channel.display_name}
-                        {items.length > 0 ? ` · ${items.length}` : ''}
-                    </div>
+                <div style={{fontWeight: 600, fontSize: '14px', color: centerColor}}>
+                    {channel.display_name}
+                    {items.length > 0 ? ` · ${items.length}` : ''}
                 </div>
                 <button
                     className={'btn btn-tertiary'}
