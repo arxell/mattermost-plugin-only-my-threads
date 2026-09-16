@@ -19,9 +19,47 @@ import {getCurrentUser, getCurrentUserId} from 'mattermost-redux/selectors/entit
 const PLUGIN_STATE_KEY = 'plugins-only-my-threads';
 const REFRESH_DELAY_MS = 400;
 
+// Hover toolbar styles for list items, kept close to the host's Saved
+// Messages actions. Inline styles cannot express :hover, so a prefixed
+// stylesheet is injected once with the panel.
+const ITEM_TOOLBAR_CSS = `
+.omt-item { position: relative; }
+.omt-toolbar {
+    position: absolute;
+    right: 12px;
+    bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 120ms ease;
+    z-index: 5;
+}
+.omt-item:hover .omt-toolbar { opacity: 1; visibility: visible; }
+.omt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 0;
+    background: transparent;
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 400;
+    color: inherit;
+    font-family: inherit;
+}
+.omt-btn:hover { background: var(--omt-hover); }
+.omt-btn:focus { outline: 1px solid rgba(0, 0, 0, 0.2); }
+`;
+
 // Fallback colors used when the theme is not (yet) available in the store.
 const FALLBACK_TEXT = '#1f4157';
-const FALLBACK_LINK = '#166de0';
 const FALLBACK_ERROR = '#d24b4e';
 
 const getPostedSeq = (state: GlobalState): number => {
@@ -78,9 +116,9 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const teamName = team?.name;
 
     const centerColor = theme.centerChannelColor || FALLBACK_TEXT;
-    const linkColor = theme.linkColor || FALLBACK_LINK;
     const errorColor = theme.errorTextColor || FALLBACK_ERROR;
     const secondaryColor = withAlpha(centerColor, 0.6);
+    const toolbarBg = theme.centerChannelBg || '#ffffff';
 
     // Switching the channel resets pagination.
     useEffect(() => {
@@ -250,6 +288,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                 {items.map((thread) => (
                     <div
                         key={thread.id}
+                        className={'omt-item'}
                         role={'button'}
                         tabIndex={0}
                         onClick={() => openThread(thread)}
@@ -265,40 +304,53 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                             color: centerColor,
                         }}
                     >
-                        <div style={{fontSize: '15px', lineHeight: '1.45', marginBottom: '4px'}}>
+                        <div style={{fontSize: '15px', lineHeight: '1.45', marginBottom: '2px'}}>
                             {messageToSnippet(thread.message, {
                                 codeLabel: t('snippet.code'),
                                 imageLabel: t('snippet.image'),
                             })}
                         </div>
-                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                            {thread.awaitingReply ? (
-                                <span style={{color: secondaryColor, fontSize: '12px'}}>
-                                    {'⏳ '}
-                                    {t('panel.awaiting')}
-                                </span>
-                            ) : (
-                                <span style={{color: linkColor}}>
-                                    {'💬 '}
-                                    {thread.replyCount}
-                                </span>
-                            )}
-                            <div style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
-                                <span style={{color: secondaryColor, fontSize: '12px'}}>
-                                    {formatDateTime(thread.lastActivityAt)}
-                                </span>
-                                <button
-                                    className={'btn btn-tertiary'}
-                                    title={t('panel.showInChannel')}
-                                    style={{display: 'inline-flex', alignItems: 'center', height: '20px', padding: '0 4px', border: '0', background: 'transparent', color: linkColor, cursor: 'pointer', fontSize: '13px', lineHeight: 1}}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        jumpToPost(thread);
-                                    }}
+                        <div style={{fontSize: '12px', color: secondaryColor}}>
+                            {formatDateTime(thread.lastActivityAt)}
+                        </div>
+                        <div
+                            className={'omt-toolbar'}
+                            style={{
+                                background: toolbarBg,
+                                border: `1px solid ${withAlpha(centerColor, 0.15)}`,
+                                '--omt-hover': withAlpha(centerColor, 0.08),
+                            } as React.CSSProperties}
+                        >
+                            {/* A focused element removed on unmount breaks the
+                                host thread view's virtual list sizing, so the
+                                toolbar buttons never take focus on click. */}
+                            <button
+                                className={'omt-btn'}
+                                title={t('panel.reply')}
+                                onMouseDown={(e) => e.preventDefault()}
+                            >
+                                <svg
+                                    width={'13'}
+                                    height={'13'}
+                                    viewBox={'0 0 24 24'}
+                                    fill={'currentColor'}
+                                    aria-hidden={true}
                                 >
-                                    {'↗'}
-                                </button>
-                            </div>
+                                    <path d={'M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z'}/>
+                                </svg>
+                                {`${t('panel.reply')} (${thread.replyCount})`}
+                            </button>
+                            <button
+                                className={'omt-btn'}
+                                title={t('panel.jump')}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    jumpToPost(thread);
+                                }}
+                            >
+                                {t('panel.jump')}
+                            </button>
                         </div>
                     </div>
                 ))}
@@ -321,6 +373,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
 
     return (
         <div style={{height: '100%', overflowY: 'auto'}}>
+            <style>{ITEM_TOOLBAR_CSS}</style>
             <div
                 style={{
                     display: 'flex',
