@@ -265,7 +265,13 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                             color: centerColor,
                         }}
                     >
-                        <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '4px'}}>
+                        <div style={{fontSize: '13px', lineHeight: '1.4', marginBottom: '4px'}}>
+                            {messageToSnippet(thread.message, {
+                                codeLabel: t('snippet.code'),
+                                imageLabel: t('snippet.image'),
+                            })}
+                        </div>
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                             {thread.awaitingReply ? (
                                 <span style={{color: secondaryColor, fontSize: '12px'}}>
                                     {'⏳ '}
@@ -293,12 +299,6 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                                     {'↗'}
                                 </button>
                             </div>
-                        </div>
-                        <div style={{fontSize: '13px', lineHeight: '1.4'}}>
-                            {messageToSnippet(thread.message, {
-                                codeLabel: t('snippet.code'),
-                                imageLabel: t('snippet.image'),
-                            })}
                         </div>
                     </div>
                 ))}
