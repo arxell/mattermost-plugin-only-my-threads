@@ -1,0 +1,11 @@
+{
+    "id": "only-my-threads",
+    "name": "Only My Threads",
+    "description": "Adds a channel header button that opens a panel with only the threads you started in the current channel.",
+    "icon_path": "assets/icon.svg",
+    "version": "0.8.1",
+    "min_server_version": "6.2.1",
+    "webapp": {
+        "bundle_path": "webapp/dist/main.js"
+    }
+}

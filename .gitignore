@@ -1,0 +1,9 @@
+node_modules/
+dist/
+webapp/dist/
+webapp/.eslintcache
+webapp/junit.xml
+server/dist/
+*.tar.gz
+.DS_Store
+local-server/
