@@ -10,7 +10,6 @@ import {fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from 'utils/thread
 import type {GlobalState} from '@mattermost/types/store';
 
 import {receivedPosts, receivedPostsInThread} from 'mattermost-redux/actions/posts';
-import {deletePreferences, savePreferences} from 'mattermost-redux/actions/preferences';
 import {Client4} from 'mattermost-redux/client';
 import {getCurrentChannel} from 'mattermost-redux/selectors/entities/channels';
 import {getTheme} from 'mattermost-redux/selectors/entities/preferences';
@@ -122,7 +121,6 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const errorColor = theme.errorTextColor || FALLBACK_ERROR;
     const secondaryColor = withAlpha(centerColor, 0.6);
     const toolbarBg = theme.centerChannelBg || '#ffffff';
-    const myPreferences = useSelector((state: GlobalState) => state.entities.preferences.myPreferences);
 
     // Switching the channel resets pagination.
     useEffect(() => {
@@ -221,18 +219,6 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         } catch (e) {
             window.location.assign(url);
         }
-    };
-
-    // Toggles the thread's root post in the host's Saved Messages, which is
-    // the per-user "saved_post" preference.
-    const toggleSaved = (thread: MyThread) => {
-        if (!userId) {
-            return;
-        }
-        const preference = {user_id: userId, category: 'saved_post', name: thread.id, value: 'true'};
-        const isSaved = myPreferences[`saved_post--${thread.id}`] !== undefined;
-        const action = isSaved ? deletePreferences(userId, [preference]) : savePreferences(userId, [preference]);
-        (store.dispatch as (a: unknown) => unknown)(action);
     };
 
     // Opens the thread in the right-hand sidebar with its reply composer,
@@ -360,27 +346,6 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                             {/* A focused element removed on unmount breaks the
                                 host thread view's virtual list sizing, so the
                                 toolbar buttons never take focus on click. */}
-                            <button
-                                className={'omt-btn'}
-                                title={myPreferences[`saved_post--${thread.id}`] === undefined ? t('panel.save') : t('panel.unsave')}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleSaved(thread);
-                                }}
-                            >
-                                <svg
-                                    width={'13'}
-                                    height={'13'}
-                                    viewBox={'0 0 24 24'}
-                                    fill={myPreferences[`saved_post--${thread.id}`] === undefined ? 'none' : 'currentColor'}
-                                    stroke={'currentColor'}
-                                    strokeWidth={'2'}
-                                    aria-hidden={true}
-                                >
-                                    <path d={'M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z'}/>
-                                </svg>
-                            </button>
                             <button
                                 className={'omt-btn'}
                                 title={t('panel.reply')}
