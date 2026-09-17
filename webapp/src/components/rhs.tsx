@@ -4,8 +4,8 @@
 import {useTranslation} from 'i18n';
 import React, {useEffect, useRef, useState} from 'react';
 import {useSelector, useStore} from 'react-redux';
-import type {MyThread, SearchContext} from 'utils/threads';
-import {fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from 'utils/threads';
+import type {MyThread, ReactionSummary, SearchContext} from 'utils/threads';
+import {aggregateReactions, fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from 'utils/threads';
 
 import type {GlobalState} from '@mattermost/types/store';
 
@@ -56,7 +56,40 @@ const ITEM_TOOLBAR_CSS = `
 }
 .omt-btn:hover { background: var(--omt-hover); }
 .omt-btn:focus { outline: 1px solid rgba(0, 0, 0, 0.2); }
+.omt-picker {
+    position: absolute;
+    right: 12px;
+    bottom: 34px;
+    display: grid;
+    grid-template-columns: repeat(6, auto);
+    gap: 2px;
+    padding: 6px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    z-index: 10;
+}
+.omt-emoji {
+    border: 0;
+    background: transparent;
+    border-radius: 4px;
+    padding: 4px;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    font-family: inherit;
+}
+.omt-emoji:hover { background: var(--omt-hover); }
 `;
+
+// Frequently used system emoji offered in the panel picker. Custom or
+// unknown reaction names render as ":name:" chips.
+const PICKER_EMOJIS: Array<[string, string]> = [
+    ['+1', '👍'], ['-1', '👎'], ['smile', '😄'], ['laughing', '😆'], ['joy', '😂'], ['wink', '😉'],
+    ['tada', '🎉'], ['heart', '❤️'], ['eyes', '👀'], ['white_check_mark', '✅'], ['x', '❌'], ['question', '❓'],
+    ['fire', '🔥'], ['clap', '👏'], ['wave', '👋'], ['rocket', '🚀'], ['thinking_face', '🤔'], ['pray', '🙏'],
+];
+const EMOJI_CHARS: Record<string, string> = Object.fromEntries(PICKER_EMOJIS);
+const emojiChar = (name: string): string => EMOJI_CHARS[name] ?? `:${name}:`;
 
 // Fallback colors used when the theme is not (yet) available in the store.
 const FALLBACK_TEXT = '#1f4157';
@@ -70,6 +103,16 @@ const getPostedSeq = (state: GlobalState): number => {
         return 0;
     }
     return pluginState.seq ?? 0;
+};
+
+const getReactionSeq = (state: GlobalState): number => {
+    const pluginState = (state as unknown as Record<string, {reactionSeq?: number}>)[PLUGIN_STATE_KEY];
+    return pluginState?.reactionSeq ?? 0;
+};
+
+const getReactionPostId = (state: GlobalState): string | null => {
+    const pluginState = (state as unknown as Record<string, {reactionPostId?: string | null}>)[PLUGIN_STATE_KEY];
+    return pluginState?.reactionPostId ?? null;
 };
 
 function withAlpha(color: string | undefined, alpha: number, fallback = FALLBACK_TEXT): string {
@@ -98,6 +141,8 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const team = useSelector((state: GlobalState) => getCurrentTeam(state));
     const theme = useSelector((state: GlobalState) => getTheme(state));
     const postedSeq = useSelector(getPostedSeq);
+    const reactionSeq = useSelector(getReactionSeq);
+    const reactionPostId = useSelector(getReactionPostId);
 
     // Loaded months, index 0 = current month. Older months are appended
     // on demand by the "show more" button (server-side pagination).
@@ -108,6 +153,11 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const loadingOlderRef = useRef(false);
     const [error, setError] = useState<string | null>(null);
     const [manualRefresh, setManualRefresh] = useState(0);
+
+    // Live reaction chips, overriding the month-fetch data. Keyed by root
+    // post id; refreshed after panel toggles and reaction websocket events.
+    const [reactionsByPost, setReactionsByPost] = useState<Record<string, ReactionSummary[]>>({});
+    const [pickerFor, setPickerFor] = useState<string | null>(null);
 
     const channelId = channel?.id;
     const channelName = channel?.name;
@@ -126,6 +176,8 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     useEffect(() => {
         setMonths(null);
         setNoMoreMonths(false);
+        setReactionsByPost({});
+        setPickerFor(null);
     }, [channelId]);
 
     const searchContext: SearchContext = {
@@ -171,6 +223,23 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
             clearTimeout(timer);
         };
     }, [channelId, channelName, isPrivateChannel, username, userId, teamId, postedSeq, manualRefresh]);
+
+    const refetchReactions = async (postId: string) => {
+        try {
+            const list = await Client4.getReactionsForPost(postId);
+            setReactionsByPost((prev) => ({...prev, [postId]: aggregateReactions(list, userId || '')}));
+        } catch {
+            // Keep the previously rendered chips.
+        }
+    };
+
+    // Reaction websocket events refresh the chips of the affected thread.
+    useEffect(() => {
+        if (reactionPostId && reactionSeq > 0 && (months || []).some((m) => m.some((t) => t.id === reactionPostId))) {
+            refetchReactions(reactionPostId);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [reactionSeq]);
 
     if (!channel) {
         return (
@@ -219,6 +288,27 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         } catch (e) {
             window.location.assign(url);
         }
+    };
+
+    const reactionsFor = (thread: MyThread): ReactionSummary[] =>
+        reactionsByPost[thread.id] ?? thread.reactions;
+
+    // Adds or removes the user's reaction, then refreshes that post's chips.
+    const toggleReaction = async (thread: MyThread, emojiName: string) => {
+        if (!userId) {
+            return;
+        }
+        const alreadyMine = reactionsFor(thread).some((s) => s.emojiName === emojiName && s.mine);
+        try {
+            if (alreadyMine) {
+                await Client4.removeReaction(userId, thread.id, emojiName);
+            } else {
+                await Client4.addReaction(userId, thread.id, emojiName);
+            }
+        } catch {
+            return;
+        }
+        await refetchReactions(thread.id);
     };
 
     // Opens the thread in the right-hand sidebar with its reply composer,
@@ -319,6 +409,86 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                                 imageLabel: t('snippet.image'),
                             })}
                         </div>
+                        {reactionsFor(thread).length > 0 ? (
+                            <div style={{display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '4px'}}>
+                                {reactionsFor(thread).map((summary) => (
+                                    <button
+                                        key={summary.emojiName}
+                                        className={'omt-chip'}
+                                        title={`:${summary.emojiName}:`}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            borderRadius: '10px',
+                                            padding: '1px 8px',
+                                            fontSize: '12px',
+                                            lineHeight: '1.5',
+                                            cursor: 'pointer',
+                                            color: centerColor,
+                                            fontFamily: 'inherit',
+                                            border: `1px solid ${summary.mine ? linkColor : withAlpha(centerColor, 0.25)}`,
+                                            background: summary.mine ? withAlpha(linkColor, 0.1) : 'transparent',
+                                        }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleReaction(thread, summary.emojiName);
+                                        }}
+                                    >
+                                        {emojiChar(summary.emojiName)}
+                                        {summary.count > 1 ? summary.count : ''}
+                                    </button>
+                                ))}
+                                <button
+                                    className={'omt-chip'}
+                                    title={t('panel.addReaction')}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        borderRadius: '10px',
+                                        padding: '1px 8px',
+                                        fontSize: '12px',
+                                        lineHeight: '1.5',
+                                        cursor: 'pointer',
+                                        color: secondaryColor,
+                                        fontFamily: 'inherit',
+                                        border: `1px dashed ${withAlpha(centerColor, 0.3)}`,
+                                        background: 'transparent',
+                                    }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setPickerFor(pickerFor === thread.id ? null : thread.id);
+                                    }}
+                                >
+                                    {'+'}
+                                </button>
+                            </div>
+                        ) : null}
+                        {pickerFor === thread.id ? (
+                            <div
+                                className={'omt-picker'}
+                                style={{
+                                    background: toolbarBg,
+                                    border: `1px solid ${withAlpha(centerColor, 0.15)}`,
+                                    '--omt-hover': withAlpha(centerColor, 0.08),
+                                } as React.CSSProperties}
+                            >
+                                {PICKER_EMOJIS.map(([name, char]) => (
+                                    <button
+                                        key={name}
+                                        className={'omt-emoji'}
+                                        title={`:${name}:`}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setPickerFor(null);
+                                            toggleReaction(thread, name);
+                                        }}
+                                    >
+                                        {char}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
                         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                             <span style={{fontSize: '12px', color: secondaryColor}}>
                                 {formatDateTime(thread.lastActivityAt)}
@@ -348,6 +518,25 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                             {/* A focused element removed on unmount breaks the
                                 host thread view's virtual list sizing, so the
                                 toolbar buttons never take focus on click. */}
+                            <button
+                                className={'omt-btn'}
+                                title={t('panel.addReaction')}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPickerFor(pickerFor === thread.id ? null : thread.id);
+                                }}
+                            >
+                                <svg
+                                    width={'13'}
+                                    height={'13'}
+                                    viewBox={'0 0 24 24'}
+                                    fill={'currentColor'}
+                                    aria-hidden={true}
+                                >
+                                    <path d={'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM12 18c-2.28 0-4.22-1.4-5-3.38.42-.72 1.4-1.02 2.2-.6l1.2.63c.98.52 2.14.52 3.12 0l1.2-.63c.8-.42 1.78-.12 2.2.6C16.22 16.6 14.28 18 12 18z'}/>
+                                </svg>
+                            </button>
                             <button
                                 className={'omt-btn'}
                                 title={t('panel.reply')}

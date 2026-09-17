@@ -5,19 +5,21 @@ import type {Post} from '@mattermost/types/posts';
 
 import {Client4} from 'mattermost-redux/client';
 
-import {fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from './threads';
+import {aggregateReactions, fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from './threads';
 
 jest.mock('mattermost-redux/client', () => ({
     Client4: {
         searchPostsWithParams: jest.fn(),
         getUserThread: jest.fn(),
         getPosts: jest.fn(),
+        getReactionsForPost: jest.fn(),
     },
 }));
 
 const mockedSearch = Client4.searchPostsWithParams as jest.Mock;
 const mockedUserThread = Client4.getUserThread as jest.Mock;
 const mockedGetPosts = Client4.getPosts as jest.Mock;
+const mockedGetReactions = Client4.getReactionsForPost as jest.Mock;
 
 const makePost = (id: string, overrides: Partial<Post> = {}): Post => ({
     id,
@@ -95,11 +97,48 @@ describe('messageToSnippet', () => {
     });
 });
 
+describe('aggregateReactions', () => {
+    const reaction = (emojiName: string, userId: string, deleted = false) => ({
+        user_id: userId,
+        post_id: 'p1',
+        emoji_name: emojiName,
+        create_at: 1,
+        update_at: 1,
+        delete_at: deleted ? 2 : 0,
+    });
+
+    it('groups by emoji, counts and flags the own reaction', () => {
+        const summaries = aggregateReactions([
+            reaction('+1', 'u1'),
+            reaction('+1', 'u2'),
+            reaction('tada', 'u2'),
+        ], 'u1');
+        expect(summaries).toEqual([
+            {emojiName: '+1', count: 2, mine: true},
+            {emojiName: 'tada', count: 1, mine: false},
+        ]);
+    });
+
+    it('skips deleted reactions and sorts by count', () => {
+        const summaries = aggregateReactions([
+            reaction('a', 'u2', true),
+            reaction('b', 'u2'),
+            reaction('b', 'u1'),
+        ], 'u1');
+        expect(summaries).toEqual([{emojiName: 'b', count: 2, mine: true}]);
+    });
+
+    it('returns an empty list for no reactions', () => {
+        expect(aggregateReactions([], 'u1')).toEqual([]);
+    });
+});
+
 describe('fetchCurrentMonth (search mode)', () => {
     beforeEach(() => {
         mockedSearch.mockReset();
         mockedUserThread.mockReset();
         mockedGetPosts.mockReset();
+        mockedGetReactions.mockReset().mockResolvedValue([]);
     });
 
     it('searches the current month in the channel by the user', async () => {
@@ -189,6 +228,20 @@ describe('fetchCurrentMonth (search mode)', () => {
         });
     });
 
+    it('attaches aggregated reactions of the root post', async () => {
+        mockedSearch.mockResolvedValue(searchResponse([makePost('root9')]));
+        mockedUserThread.mockResolvedValue({reply_count: 0, last_reply_at: 0});
+        mockedGetReactions.mockResolvedValue([
+            {user_id: 'u1', post_id: 'root9', emoji_name: '+1', create_at: 1, update_at: 1, delete_at: 0},
+            {user_id: 'u2', post_id: 'root9', emoji_name: '+1', create_at: 1, update_at: 1, delete_at: 0},
+        ]);
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+
+        expect(mockedGetReactions).toHaveBeenCalledWith('root9');
+        expect(threads[0].reactions).toEqual([{emojiName: '+1', count: 2, mine: true}]);
+    });
+
     it('falls back to a channel scan when search fails', async () => {
         mockedSearch.mockRejectedValue(new Error('search disabled'));
         const mine = makePost('my-root', {user_id: 'u1', create_at: 100});
@@ -252,6 +305,7 @@ describe('fetchOlderMonth', () => {
     beforeEach(() => {
         mockedSearch.mockReset();
         mockedUserThread.mockReset();
+        mockedGetReactions.mockReset().mockResolvedValue([]);
     });
 
     it('skips empty months and returns the first month with data', async () => {

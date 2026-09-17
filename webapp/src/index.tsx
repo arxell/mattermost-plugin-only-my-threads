@@ -5,7 +5,7 @@ import {getLocale, translate} from 'i18n';
 import manifest from 'manifest';
 import React from 'react';
 import {Provider} from 'react-redux';
-import {POSTED_ACTION, postedReducer} from 'reducer';
+import {POSTED_ACTION, REACTION_ACTION, postedReducer} from 'reducer';
 import type {Store} from 'redux';
 
 import type {GlobalState} from '@mattermost/types/store';
@@ -75,6 +75,18 @@ export default class Plugin {
                 store.dispatch({type: POSTED_ACTION, channelId});
             }
         });
+
+        // Keep the panel reaction chips in sync when reactions change
+        // anywhere (added from the panel itself, in the channel, or by
+        // other users).
+        const dispatchReaction = (msg: {data?: {reaction?: {post_id?: string}}}) => {
+            const postId = msg.data && msg.data.reaction ? msg.data.reaction.post_id : undefined;
+            if (postId) {
+                store.dispatch({type: REACTION_ACTION, postId});
+            }
+        };
+        registry.registerWebSocketEventHandler('reaction_added', dispatchReaction);
+        registry.registerWebSocketEventHandler('reaction_removed', dispatchReaction);
     }
 }
 

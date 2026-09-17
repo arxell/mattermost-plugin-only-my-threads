@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.13.0] — 2026-09-17
+
+- Reactions in the panel: each thread row shows the reactions of its root post as chips (emoji + count, highlighted when yours). Clicking a chip toggles your reaction; a "+" chip and a smiley button in the hover toolbar open a picker with frequently used emoji. Reaction chips update live via the `reaction_added`/`reaction_removed` websocket events. Empty reaction lists (the server returns `null`) are handled safely.
+
 ## [0.12.0] — 2026-09-17
 
 - Added French and German localization. The plugin now ships EN, RU, FR and DE dictionaries; the locale follows the account language, everything else still falls back to English. The dictionary symmetry unit test now checks every locale.

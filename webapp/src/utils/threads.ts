@@ -2,6 +2,7 @@
 // See LICENSE.txt for license information.
 
 import type {Post} from '@mattermost/types/posts';
+import type {Reaction} from '@mattermost/types/reactions';
 
 import {Client4} from 'mattermost-redux/client';
 
@@ -12,6 +13,7 @@ export interface MyThread {
     createAt: number;
     replyCount: number;
     lastActivityAt: number;
+    reactions: ReactionSummary[];
 
     // True when the root post has no replies yet ("waiting for an answer").
     awaitingReply: boolean;
@@ -19,6 +21,31 @@ export interface MyThread {
     // The raw root post, reused to put it into the host store before
     // opening the thread in the right-hand sidebar.
     post: Post;
+}
+
+// Reactions of a root post grouped for the panel chips.
+export interface ReactionSummary {
+    emojiName: string;
+    count: number;
+    mine: boolean;
+}
+
+export function aggregateReactions(reactions: Reaction[] | null | undefined, userId: string): ReactionSummary[] {
+    const byName = new Map<string, ReactionSummary>();
+    for (const reaction of reactions ?? []) {
+        // Defensive: some servers include removed reactions with a set
+        // delete_at, which the typed model does not declare.
+        if ((reaction as {delete_at?: number}).delete_at) {
+            continue;
+        }
+        const summary = byName.get(reaction.emoji_name) ?? {emojiName: reaction.emoji_name, count: 0, mine: false};
+        summary.count++;
+        if (reaction.user_id === userId) {
+            summary.mine = true;
+        }
+        byName.set(reaction.emoji_name, summary);
+    }
+    return [...byName.values()].sort((a, b) => b.count - a.count || a.emojiName.localeCompare(b.emojiName));
 }
 
 // Context needed to find the user's posts via server-side search.
@@ -93,9 +120,14 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
     const roots = [...collected.values()].filter((post) => post.root_id === '' && !post.delete_at);
 
     const details = await Promise.allSettled(roots.map((root) => Client4.getUserThread(userId, teamId, root.id)));
+    const reactionLists = await Promise.allSettled(roots.map((root) => Client4.getReactionsForPost(root.id)));
 
     return sortThreads(roots.map((root, i) => {
         const detail = details[i];
+        const reactionList = reactionLists[i] as PromiseSettledResult<Reaction[]>;
+        const reactions = reactionList.status === 'fulfilled' ?
+            aggregateReactions(reactionList.value ?? [], userId) :
+            [];
         if (detail.status === 'fulfilled') {
             return {
                 id: root.id,
@@ -104,6 +136,7 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
                 createAt: root.create_at,
                 replyCount: detail.value.reply_count,
                 lastActivityAt: Math.max(detail.value.last_reply_at, root.create_at),
+                reactions,
                 awaitingReply: detail.value.reply_count === 0,
                 post: root,
             };
@@ -115,6 +148,7 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
             createAt: root.create_at,
             replyCount: 0,
             lastActivityAt: root.create_at,
+            reactions,
             awaitingReply: true,
             post: root,
         };
@@ -198,6 +232,7 @@ async function fetchAllByScan(channelId: string, userId: string): Promise<MyThre
             createAt: post.create_at,
             replyCount,
             lastActivityAt: Math.max(post.create_at, lastReplyAt.get(post.id) ?? 0),
+            reactions: [],
             awaitingReply: replyCount === 0,
             post,
         });
