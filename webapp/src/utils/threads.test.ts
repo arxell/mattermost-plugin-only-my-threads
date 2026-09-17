@@ -10,14 +10,14 @@ import {aggregateReactions, fetchCurrentMonth, fetchOlderMonth, messageToSnippet
 jest.mock('mattermost-redux/client', () => ({
     Client4: {
         searchPostsWithParams: jest.fn(),
-        getUserThread: jest.fn(),
+        getPostsByIds: jest.fn(),
         getPosts: jest.fn(),
         getReactionsForPost: jest.fn(),
     },
 }));
 
 const mockedSearch = Client4.searchPostsWithParams as jest.Mock;
-const mockedUserThread = Client4.getUserThread as jest.Mock;
+const mockedPostsByIds = Client4.getPostsByIds as jest.Mock;
 const mockedGetPosts = Client4.getPosts as jest.Mock;
 const mockedGetReactions = Client4.getReactionsForPost as jest.Mock;
 
@@ -136,7 +136,7 @@ describe('aggregateReactions', () => {
 describe('fetchCurrentMonth (search mode)', () => {
     beforeEach(() => {
         mockedSearch.mockReset();
-        mockedUserThread.mockReset();
+        mockedPostsByIds.mockReset().mockResolvedValue([]);
         mockedGetPosts.mockReset();
         mockedGetReactions.mockReset().mockResolvedValue([]);
     });
@@ -170,7 +170,7 @@ describe('fetchCurrentMonth (search mode)', () => {
         const secondPage = Array.from({length: 3}, (_, i) => makePost(`p2-${i}`));
         mockedSearch.mockResolvedValueOnce(searchResponse(firstPage)).
             mockResolvedValueOnce(searchResponse(secondPage));
-        mockedUserThread.mockResolvedValue({reply_count: 0, last_reply_at: 0});
+        mockedPostsByIds.mockResolvedValue([]);
 
         const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
 
@@ -183,7 +183,7 @@ describe('fetchCurrentMonth (search mode)', () => {
     it('stops after 10 full pages even on huge channels', async () => {
         mockedSearch.mockImplementation((_teamId: string, params: {page: number}) =>
             searchResponse(Array.from({length: 100}, (_, i) => makePost(`p${params.page}-${i}`))));
-        mockedUserThread.mockResolvedValue({reply_count: 0, last_reply_at: 0});
+        mockedPostsByIds.mockResolvedValue([]);
 
         await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
 
@@ -192,19 +192,19 @@ describe('fetchCurrentMonth (search mode)', () => {
 
     it('keeps only live root posts and maps thread details', async () => {
         const root = makePost('root1', {create_at: 100});
-        const reply = makePost('reply1', {root_id: 'root1'});
+        const reply = makePost('reply1', {root_id: 'root1', create_at: 200});
         const deleted = makePost('gone1', {delete_at: 12345});
         mockedSearch.mockResolvedValue(searchResponse([root, reply, deleted]));
-        mockedUserThread.mockImplementation(async (_u: string, _t: string, rootId: string) => {
-            if (rootId === 'root1') {
-                return {reply_count: 3, last_reply_at: 200};
-            }
-            throw new Error('no thread');
-        });
+        mockedPostsByIds.mockResolvedValue([{
+            ...root,
+            reply_count: 3,
+            metadata: {reactions: [{user_id: 'u1', post_id: 'root1', emoji_name: '+1', create_at: 1, update_at: 1, delete_at: 0}]},
+        }]);
 
         const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
 
-        expect(mockedUserThread).toHaveBeenCalledTimes(1);
+        expect(mockedPostsByIds).toHaveBeenCalledTimes(1);
+        expect(mockedPostsByIds).toHaveBeenCalledWith(['root1']);
         expect(threads).toHaveLength(1);
         expect(threads[0]).toMatchObject({
             id: 'root1',
@@ -217,7 +217,7 @@ describe('fetchCurrentMonth (search mode)', () => {
 
     it('treats a missing thread as zero replies (awaiting)', async () => {
         mockedSearch.mockResolvedValue(searchResponse([makePost('root2', {create_at: 150})]));
-        mockedUserThread.mockRejectedValue(new Error('404'));
+        mockedPostsByIds.mockResolvedValue([]);
 
         const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
 
@@ -230,17 +230,21 @@ describe('fetchCurrentMonth (search mode)', () => {
         });
     });
 
-    it('attaches aggregated reactions of the root post', async () => {
-        mockedSearch.mockResolvedValue(searchResponse([makePost('root9')]));
-        mockedUserThread.mockResolvedValue({reply_count: 0, last_reply_at: 0});
-        mockedGetReactions.mockResolvedValue([
-            {user_id: 'u1', post_id: 'root9', emoji_name: '+1', create_at: 1, update_at: 1, delete_at: 0},
-            {user_id: 'u2', post_id: 'root9', emoji_name: '+1', create_at: 1, update_at: 1, delete_at: 0},
-        ]);
+    it('aggregates reactions from the batch metadata', async () => {
+        const root9 = makePost('root9');
+        mockedSearch.mockResolvedValue(searchResponse([root9]));
+        mockedPostsByIds.mockResolvedValue([{
+            ...root9,
+            reply_count: 0,
+            metadata: {reactions: [
+                {user_id: 'u1', post_id: 'root9', emoji_name: '+1', create_at: 1, update_at: 1, delete_at: 0},
+                {user_id: 'u2', post_id: 'root9', emoji_name: '+1', create_at: 1, update_at: 1, delete_at: 0},
+            ]},
+        }]);
 
         const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
 
-        expect(mockedGetReactions).toHaveBeenCalledWith('root9');
+        expect(mockedGetReactions).not.toHaveBeenCalled();
         expect(threads[0].reactions).toEqual([{emojiName: '+1', count: 2, mine: true}]);
     });
 
@@ -263,7 +267,7 @@ describe('fetchCurrentMonth (search mode)', () => {
         const page0 = Array.from({length: 100}, (_, i) => makePost(`s0-${i}`));
         const page1 = Array.from({length: 30}, (_, i) => makePost(`s1-${i}`));
         mockedGetPosts.mockResolvedValueOnce(searchResponse(page0)).mockResolvedValueOnce(searchResponse(page1));
-        mockedUserThread.mockResolvedValue({reply_count: 0, last_reply_at: 0});
+        mockedPostsByIds.mockResolvedValue([]);
 
         const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
 
@@ -286,12 +290,8 @@ describe('fetchCurrentMonth (search mode)', () => {
         const answered = makePost('answered', {create_at: 100});
         const awaiting = makePost('awaiting', {create_at: 400});
         mockedSearch.mockResolvedValue(searchResponse([answered, awaiting]));
-        mockedUserThread.mockImplementation(async (_u: string, _t: string, rootId: string) => {
-            if (rootId === 'answered') {
-                return {reply_count: 2, last_reply_at: 500};
-            }
-            throw new Error('no thread');
-        });
+        mockedPostsByIds.mockImplementation(async (ids: string[]) =>
+            ids.map((id) => (id === 'answered' ? {id, reply_count: 2} : {id, reply_count: 0})));
 
         const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
 
@@ -307,7 +307,7 @@ describe('fetchCurrentMonth (search mode)', () => {
 describe('fetchOlderMonth', () => {
     beforeEach(() => {
         mockedSearch.mockReset();
-        mockedUserThread.mockReset();
+        mockedPostsByIds.mockReset().mockResolvedValue([]);
         mockedGetReactions.mockReset().mockResolvedValue([]);
     });
 
@@ -316,7 +316,7 @@ describe('fetchOlderMonth', () => {
             mockResolvedValueOnce(searchResponse([])).
             mockResolvedValueOnce(searchResponse([])).
             mockResolvedValueOnce(searchResponse([makePost('old1', {create_at: 10})]));
-        mockedUserThread.mockResolvedValue({reply_count: 2, last_reply_at: 20});
+        mockedPostsByIds.mockImplementation(async (ids: string[]) => ids.map((id) => ({id, reply_count: 2})));
 
         const page = await fetchOlderMonth('u1', 't1', PUBLIC_CTX, 1);
 
