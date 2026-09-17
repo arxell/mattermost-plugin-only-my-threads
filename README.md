@@ -1,76 +1,76 @@
 # Only My Threads
 
-Плагин для Mattermost, который добавляет кнопку-иконку в App Bar (вертикальная полоса у правого края окна). По клику справа открывается панель «Мои треды в канале» со списком **тредов текущего канала, первое сообщение в которых написали вы** — включая сообщения, на которые ещё не ответили.
+A Mattermost plugin that adds an icon button to the App Bar (the vertical strip at the right edge of the window). Clicking it opens a right-hand panel, "My threads in this channel", listing **the threads of the current channel whose first message was written by you** — including messages that have not been replied to yet.
 
-Основан на официальном [mattermost-plugin-starter-template](https://github.com/mattermost/mattermost-plugin-starter-template).
+Based on the official [mattermost-plugin-starter-template](https://github.com/mattermost/mattermost-plugin-starter-template).
 
-## Что делает
+## What it does
 
-- Иконка-«карточка» на белой плашке в App Bar каждого канала (подпись — «Мои треды в канале» / "My threads in this channel").
-- Клик открывает/закрывает правую панель (RHS) со списком ваших тредов и сообщений в текущем канале. Заголовок панели — «Мои треды в канале», под ним крупно имя канала и число загруженных тредов. Каждая строка:
-  - короткий текст корневого сообщения (без разметки),
-  - дата последней активности слева внизу,
-  - число ответов справа внизу (💬 N); у сообщений без ответов вместо него иконка ⏳ (полный текст «Ожидает ответа» — в подсказке при наведении),
-  - сортировка от самых свежих по активности.
-- При наведении на строку появляется тулбар в стиле Saved Messages с двумя кнопками:
-  - **Ответить** — открывает тред **в боковой панели с полем ответа** («Ответить в этой теме…»): можно сразу написать, Enter — отправить. Работает и для тредов, и для «ожидающих ответа» сообщений; тред предзагружается, поэтому панель появляется мгновенно. Клик по самой строке делает то же самое.
-  - **Перейти** (Jump) — переход к посту в канале: лента прокручивается к сообщению, пост подсвечивается (штатная permalink-механика Mattermost, без перезагрузки страницы).
-- Сообщения **без ответов** показываются с иконкой ⏳ (цель панели: видеть, где вы ждёте ответа); как только приходит ответ, пункт превращается в обычный тред с числом ответов.
-- Пагинация по месяцам: панель грузит только текущий месяц (`from:вы in:канал after:… before:…` — фильтрация на стороне сервера), старые месяцы подгружаются кнопкой «Показать ещё: {месяц}» по одному; пустые месяцы пропускаются автоматически (до 24 подряд, затем панель сообщает, что больше ничего не найдено). Счётчики ответов и даты добираются точечными запросами тредов.
-- Список автоматически обновляется при новых сообщениях в канале (websocket-событие `posted`) и по кнопке обновления (иконка круговых стрелок) рядом с именем канала.
-- Локализация: русский и английский. Язык берётся из настроек аккаунта (Settings → Display → Language); панель и подпись иконки подхватывают его, заголовок панели/тултип обновляются при следующей загрузке страницы. Словари — в `webapp/src/i18n/messages.ts`; любой другой язык откатывается на английский.
-- Работает в веб-версии и в десктоп-приложении.
+- A "message card" icon on a white plate in the App Bar of every channel (tooltip — "My threads in this channel" / «Мои треды в канале»).
+- Clicking toggles the right-hand sidebar (RHS) with the list of your threads and messages in the current channel. The panel title is "My threads in this channel", with the channel name and the number of loaded threads in large type below it. Each row shows:
+  - a short snippet of the root message (markup stripped),
+  - the last activity date at the bottom left,
+  - the reply count at the bottom right (💬 N); for unreplied messages it is replaced by the ⏳ icon (the full "Awaiting reply" text is in the hover tooltip),
+  - sorted from the most recent by activity.
+- Hovering a row shows a toolbar in the Saved Messages style with two buttons:
+  - **Reply** — opens the thread **in the right-hand sidebar with the reply composer** ("Reply to this thread…"): you can type right away, Enter sends. Works for threads and for awaiting-reply messages alike; the thread is preloaded, so the panel appears instantly. Clicking the row itself does the same.
+  - **Jump** — navigates to the post in the channel: the feed scrolls to the message and the post is highlighted (stock Mattermost permalink mechanics, no page reload).
+- **Unreplied** messages are shown with the ⏳ icon (the panel's purpose: see where you are waiting for an answer); once a reply arrives, the item turns into a regular thread with a reply count.
+- Month-based pagination: the panel loads only the current month (`from:you in:channel after:… before:…` — server-side filtering); older months are loaded one by one via the "Show more: {month}" button; empty months are skipped automatically (up to 24 in a row, after which the panel reports that nothing else was found). Reply counts and dates are fetched with per-thread requests.
+- The list refreshes automatically on new messages in the channel (the `posted` websocket event) and via the refresh button (circular arrows icon) next to the channel name.
+- Localization: Russian and English. The language is taken from the account settings (Settings → Display → Language); the panel and the icon tooltip pick it up — the panel title/tooltip update on the next page load. Dictionaries live in `webapp/src/i18n/messages.ts`; any other language falls back to English.
+- Works in the web app and in the desktop app.
 
-## Требования к серверу
+## Server requirements
 
-- **Mattermost Server ≥ 6.2** — заявленный минимум в манифесте (`min_server_version: 6.2.1`): все используемые API (поиск с фильтрами `from/in/after/before`, Threads API для счётчиков ответов, реестр webapp-расширений) присутствуют начиная с этих версий.
-- **Проверено на v11.9 и v11.11** — на них плагин обкатан целиком, включая панель, пагинацию по месяцам и открытие треда в RHS.
-- **Поиск должен быть включён** (штатный по БД или Elasticsearch — оба подходят; по умолчанию включён). Без него работает fallback-режим — разовое чтение потока канала без месячной пагинации.
-- **Функция Threads** (System Console → Experimental → Threads; включена по умолчанию) — нужна для счётчиков ответов и списка «ожидающих». Без неё пункт «⏳ Ожидает ответа» пропадёт из данных.
-- **App Bar** (v7.1+): иконка плагина живёт на вертикальной панели справа. На более старых серверах кнопка автоматически отображается в заголовке канала — деградации функциональности нет.
-- От пользователя не требуется ничего, кроме членства в канале: админские права, токены и настройки плагина не нужны.
+- **Mattermost Server ≥ 6.2** — the minimum declared in the manifest (`min_server_version: 6.2.1`): all the APIs used (search with `from/in/after/before` filters, the Threads API for reply counts, the webapp extension registry) are available from these versions on.
+- **Tested on v11.9 and v11.11** — the plugin has been exercised end to end on both, including the panel, month pagination and opening a thread in the RHS.
+- **Search must be enabled** (the stock database search or Elasticsearch — both work; enabled by default). Without it a fallback mode works — a one-off read of the channel stream without month pagination.
+- **The Threads feature** (System Console → Experimental → Threads; enabled by default) — required for reply counts and the "awaiting reply" list. Without it the "⏳ awaiting reply" item disappears from the data.
+- **App Bar** (v7.1+): the plugin icon lives on the vertical bar on the right. On older servers the button automatically appears in the channel header — no functional degradation.
+- Nothing is required from the user except channel membership: no admin rights, tokens or plugin settings.
 
-## Установка
+## Installation
 
-1. Админ сервера включает загрузку плагинов: **System Console → Plugins → Plugin Management → Enable Plugin Uploads** (если ещё выключено) и включает **Enable Plugins**.
-2. **System Console → Plugins → Plugin Management → Upload Plugin** → выбрать собранный `only-my-threads-<версия>.tar.gz`.
-3. В списке плагинов найти **Only My Threads** и нажать **Enable**.
-4. Обновить страницу клиента Mattermost (Ctrl/Cmd+R).
+1. The server admin enables plugin uploads: **System Console → Plugins → Plugin Management → Enable Plugin Uploads** (if disabled yet) and enables **Enable Plugins**.
+2. **System Console → Plugins → Plugin Management → Upload Plugin** → pick the built `only-my-threads-<version>.tar.gz`.
+3. Find **Only My Threads** in the plugin list and click **Enable**.
+4. Reload the Mattermost client (Ctrl/Cmd+R).
 
-Серверной части у плагина нет (только webapp), токены и настройки не нужны — клиентская часть ходит в API от вашей сессии. Нужен включённый на сервере поиск (по умолчанию включён); без него срабатывает fallback — разовое чтение потока канала (окно 1000 постов) без пагинации по месяцам.
+There is no server part (webapp only); no tokens or settings are needed — the client talks to the API from your session. Server-side search must be enabled (it is by default); without it the fallback kicks in — a one-off read of the channel stream (a window of 1000 posts) without month pagination.
 
-## Сборка из исходников
+## Building from source
 
-Нужны Node.js (18+) и Go (для сборочных утилит шаблона).
+You need Node.js (18+) and Go (for the template's build tooling).
 
 ```bash
-make dist        # соберёт webapp и упакует dist/only-my-threads-<версия>.tar.gz
+make dist        # builds the webapp and packs dist/only-my-threads-<version>.tar.gz
 ```
 
-Полезные команды в `webapp/`:
+Useful commands in `webapp/`:
 
 ```bash
-npm ci           # установить зависимости
+npm ci           # install dependencies
 npm run lint     # ESLint
-npx tsc          # проверка типов
-npm run build    # только webapp-бандл (webapp/dist/main.js)
-npm test         # юнит-тесты
+npx tsc          # type check
+npm run build    # webapp bundle only (webapp/dist/main.js)
+npm test         # unit tests
 ```
 
-## Как устроено
+## How it works
 
-- `webapp/src/index.tsx` — регистрация расширений: кнопка в App Bar (`registerChannelHeaderButtonAction`), панель RHS (`registerRightHandSidebarComponent`), редьюсер и websocket-обработчик `posted` для автообновления.
-- `webapp/src/components/rhs.tsx` — панель: месячная пагинация, состояния, список, ховер-тулбар «Ответить/Перейти», открытие треда в RHS (экшен хоста `SELECT_POST` + предзагрузка), переход к посту в канале.
-- `webapp/src/utils/threads.ts` — месячная пагинация через серверный поиск (`Client4.searchPostsWithParams` с `from/in/after/before` и постраничной догрузкой по 100 результатов), точечные запросы `Client4.getUserThread` для счётчиков и fallback-скан потока канала.
-- `webapp/src/i18n/messages.ts` — словари RU/EN.
+- `webapp/src/index.tsx` — extension registration: the App Bar button (`registerChannelHeaderButtonAction`), the RHS panel (`registerRightHandSidebarComponent`), the reducer and the `posted` websocket handler for auto-refresh.
+- `webapp/src/components/rhs.tsx` — the panel: month pagination, states, the list, the Reply/Jump hover toolbar, opening a thread in the RHS (the host's `SELECT_POST` action + preloading), jump to post in the channel.
+- `webapp/src/utils/threads.ts` — month pagination via server-side search (`Client4.searchPostsWithParams` with `from/in/after/before` and page-by-page loading of 100 results), per-thread `Client4.getUserThread` requests for counts, and a channel stream fallback scan.
+- `webapp/src/i18n/messages.ts` — RU/EN dictionaries.
 
-## Ограничения
+## Limitations
 
-- «Ожидающие ответа» сообщения и треды показываются за любой месяц, до которого вы долистаете кнопкой «Показать ещё»; глубина не ограничена.
-- Основной режим требует включённого на сервере поиска (по умолчанию включён) и функции Threads; на старых серверах без них работает fallback-скан (окно 1000 последних постов канала).
-- Панель показывает треды канала, в котором вы находитесь; переключение канала обновляет список автоматически.
-- На серверах **v11.9** после перехода «Перейти» (permalink) вид канала может «уезжать» к свежим сообщениям — это баг самого Mattermost с прокруткой permalink-режима (исправлен в v11.10 и v11.11: «Fixed an issue with the wrong scroll position in the permalink view of channels with images», «Fixed a scroll issue caused by open graph previews in channel and permalink views»). На v11.11 эффекта нет.
+- Awaiting-reply messages and threads are shown for any month you scroll to with the "Show more" button; the depth is not limited.
+- The main mode requires server-side search (enabled by default) and the Threads feature; on old servers without them the fallback scan works (a window of the channel's last 1000 posts).
+- The panel shows the threads of the channel you are in; switching channels refreshes the list automatically.
+- On **v11.9** servers the channel view may "drift" to the recent messages after a Jump (permalink) — that is a Mattermost permalink-view scrolling bug itself (fixed in v11.10 and v11.11: "Fixed an issue with the wrong scroll position in the permalink view of channels with images", "Fixed a scroll issue caused by open graph previews in channel and permalink views"). Not reproducible on v11.11.
 
-## Лицензия
+## License
 
-Apache 2.0 (наследуется от starter template, см. LICENSE).
+Apache 2.0 (inherited from the starter template, see LICENSE).

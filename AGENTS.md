@@ -1,6 +1,6 @@
 # AGENTS.md — guide for agents making changes to this repository
 
-> **This file must stay in English.** Commit messages are English too; README, CHANGELOG and user-facing strings are Russian.
+> **This file must stay in English.** All repository documentation (README, CHANGELOG, AGENTS.md) and commit messages are English; the plugin's user-facing strings are localized RU/EN in `webapp/src/i18n/messages.ts`.
 
 **Only My Threads** is a Mattermost plugin: an RHS panel listing the threads of the current channel that were started by the current user. Webapp-only (no server part since 0.4.x). Owner — Anton (GitHub `arxell`).
 
@@ -60,4 +60,4 @@ Local server test accounts: `anton` / `ilya` / `sasha`, password `Passw0rd123!`.
 - Behavior must be as native as possible, like the host's Saved Messages.
 - Design: compact spacing; an item shows the message text, with the date bottom-left and the reply count (💬 N / ⏳ for awaiting-reply) bottom-right.
 - The Jump button must keep using the stock permalink mechanics; the "view scrolls away after jump" glitch on v11.9 is a Mattermost bug (fixed upstream in 11.10/11.11), not the plugin's.
-- README, CHANGELOG and user-facing strings are Russian; commit messages are English; this file is English.
+- README, CHANGELOG, AGENTS.md and commit messages are English; the plugin's user-facing strings are localized RU/EN (`webapp/src/i18n/messages.ts`).

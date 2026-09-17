@@ -1,66 +1,66 @@
 # Changelog
 
-Все заметные изменения плагина Only My Threads. Формат — по мотивам [Keep a Changelog](https://keepachangelog.com/ru/), версии соответствуют `plugin.json`. Собранные релизы — на странице [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases).
+All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
 ## [0.11.4] — 2026-09-16
 
-- Ужаты вертикальные отступы: блок имени канала (паддинг 12→6px) и расстояние между разделительными линиями списка (высота строки 61→52px).
-- Релиз собран и опубликован на GitHub (тег `v0.11.4`).
+- Tightened vertical spacing: the channel name block (padding 12→6px) and the distance between the list's separator lines (row height 61→52px).
+- Release built and published on GitHub (tag `v0.11.4`).
 
 ## [0.11.3] — 2026-09-16
 
-- Кнопка обновления: вместо символа «⟳» — иконка круговых стрелок из [mattermost/compass-icons](https://github.com/mattermost/compass-icons) (`refresh_F0450`), цвет из темы.
+- Refresh button: the "⟳" character replaced with the circular-arrows icon from [mattermost/compass-icons](https://github.com/mattermost/compass-icons) (`refresh_F0450`), themed color.
 
 ## [0.11.2] — 2026-09-16
 
-- У сообщений без ответов в углу строки остаётся только иконка ⏳ (текст «Ожидает ответа» перенесён в подсказку при наведении).
+- Unreplied messages keep only the ⏳ icon in the row corner (the "Awaiting reply" text moved into the hover tooltip).
 
 ## [0.11.1] — 2026-09-16
 
-- Убрана кнопка сохранения треда в Saved Messages из ховер-тулбара (вернулась пара «Ответить / Перейти»).
+- Dropped the save-to-Saved-Messages button from the hover toolbar (back to the Reply/Jump pair).
 
 ## [0.11.0] — 2026-09-16
 
-- Заголовок панели без дубля: строка «Мои треды в канале» остаётся только в шапке RHS, внутри панели — крупное имя канала и счётчик тредов.
-- Добавлена кнопка-закладка для сохранения корневого поста треда в Saved Messages (позже убрана в 0.11.1).
-- Счётчик ответов (💬 N) возвращён в правый нижний угол строки; у тредов без ответов — ⏳.
-- Фикс плавающего бага: после открытия треда из панели виртуальный список хоста иногда измерял контейнер нулевым и рисовал пустой тред — теперь после открытия дёргается `window.resize` для перемерения.
+- Single panel title: the "My threads in this channel" line remains only in the RHS header; inside the panel — the channel name and thread count in large type.
+- Added a bookmark button to save a thread's root post to Saved Messages (removed later in 0.11.1).
+- The reply count badge (💬 N) returned to the row's bottom-right corner; threads without replies get ⏳.
+- Fixed a flaky bug: right after opening a thread from the panel, the host's virtual list sometimes measured its container as zero-sized and rendered an empty thread — a `window.resize` nudge is now dispatched to force a re-measure.
 
 ## [0.10.0] — 2026-09-16
 
-- Ховер-тулбар в стиле Saved Messages: при наведении на строку появляются кнопки «Ответить» (открывает тред в RHS) и «Перейти» (permalink-переход к посту в канале).
-- Убраны прежние элементы строки: бейдж со счётчиком слева и кнопка ↗ справа.
-- Кнопки тулбара не забирают фокус на mousedown: фокус на удаляемом при анмаунте элементе ломал измерения виртуального списка хоста (пустой тред).
+- Saved Messages style hover toolbar: hovering a row reveals Reply (opens the thread in the RHS) and Jump (permalink navigation to the post in the channel) buttons.
+- Removed the former inline row elements: the reply-count badge on the left and the ↗ button on the right.
+- The toolbar buttons do not take focus on mousedown: focus on an element removed on unmount broke the host virtual list's measurements (empty thread).
 
 ## [0.9.3] — 2026-09-16
 
-- Ужаты отступы в списке: строка меты больше не растягивается до 40px кнопкой ↗ (кнопке задана высота 20px), нижний паддинг строки 10→4px; высота строки 87→61px, зазор между счётчиком и разделителем — 5px.
+- Tightened list spacing: the meta row is no longer stretched to 40px by the ↗ button (the button got an explicit 20px height), the row's bottom padding 10→4px; row height 87→61px, the gap between the counter and the separator is 5px.
 
 ## [0.9.2] — 2026-09-16
 
-- Крупнее шрифт текста сообщения в строке: 13→15px.
+- Larger message text font in rows: 13→15px.
 
 ## [0.9.1] — 2026-09-16
 
-- Текст сообщения теперь выше строки со счётчиком ответов (иконка и дата — снизу).
+- The message text now sits above the reply-count row (the icon and date are at the bottom).
 
 ## [0.9.0] — 2026-09-16
 
-- Фикс пропадания сообщений из панели на нагруженных каналах: сервер отдаёт одну страницу поиска (~60 постов), из-за чего часть постов не попадала в список. Поиск теперь листается постранично (`searchPostsWithParams`, 100/страница, до 10 страниц).
-- Первый собранный релиз на GitHub (тег `v0.9.0`, CI `plugin-ci` + release job).
+- Fixed messages missing from the panel on busy channels: the server returns a single search page (~60 posts), so some posts never made it into the list. The search is now paginated (`searchPostsWithParams`, 100/page, up to 10 pages).
+- First release built on GitHub (tag `v0.9.0`, CI `plugin-ci` + release job).
 
 ## [0.8.1] — 2026-09-16
 
-- Фикс дублей месяцев: защита от двойного клика по «Показать ещё» (синхронный guard через `useRef`) и дедупликация по id поста при добавлении.
-- Автообновление по websocket (`posted`) больше не сбрасывает уже загруженные старые месяцы — перезаменяется только текущий.
-- Первая публикация исходников на GitHub, CI (lint/test/build) и авто-релиз по тегам `v*`.
+- Fixed month duplication: double-click protection on "Show more" (a synchronous `useRef` guard) and deduplication by post id on append.
+- The websocket auto-refresh (`posted`) no longer resets already loaded older months — only the current month is replaced.
+- First publication of the sources on GitHub, CI (lint/test/build) and automatic releases on `v*` tags.
 
-## Ранняя история (0.1.0 – 0.7.2, восстановлено по истории разработки)
+## Early history (0.1.0 – 0.7.2, reconstructed from the development log)
 
-- **0.1.x** — первый вариант: скан постов канала на клиенте, панель RHS, кнопка в заголовке канала/App Bar; фикс краха всего приложения при открытии панели (React #130 — регистрировался JSX-элемент вместо типа компонента).
-- **0.2.x** — иконка: вместо «серого пятна» цветная карточка сообщений (#166de0) — App Bar рисует иконки плагинов на белых плашках.
-- **0.3.x** — серверная часть на Go с настройками глубины скана в System Console (позже от нее отказались).
-- **0.4.x – 0.5.x** — переход на Threads API (`getUserThread`) вместо скана потока: счётчики ответов от сервера, точечные запросы; серверная часть убрана, плагин стал webapp-only. Добавлены «ожидающие ответа» сообщения (⏳) — цель панели: видеть, где вы ждёте ответа. Клик по строке открывает тред в RHS с полем ответа, как Saved Messages; ↗ — переход к посту в канале.
-- **0.6.x – 0.7.0** — пагинация по месяцам через серверный поиск (`from/in/after/before`), кнопка «Показать ещё: {месяц}», локализация RU/EN.
-- **0.7.1** — кнопка «Показать ещё» доступна и при пустом текущем месяце.
-- **0.7.2** — пропуск пустых месяцев (до 24 подряд) и сообщение «Больше ваших сообщений в канале не найдено».
+- **0.1.x** — first version: client-side scan of the channel stream, an RHS panel, a channel header/App Bar button; fixed a whole-app crash on panel open (React #130 — a JSX element was registered instead of the component type).
+- **0.2.x** — the icon: instead of a "gray blob", a colored message card (#166de0) — the App Bar renders plugin icons on white plates.
+- **0.3.x** — a Go server part with scan-depth settings in the System Console (abandoned later).
+- **0.4.x – 0.5.x** — switched to the Threads API (`getUserThread`) instead of the stream scan: server-side reply counts, per-thread requests; the server part was removed, the plugin became webapp-only. Added awaiting-reply messages (⏳) — the panel's purpose: see where you are waiting for an answer. Clicking a row opens the thread in the RHS with a reply composer, like Saved Messages; ↗ jumps to the post in the channel.
+- **0.6.x – 0.7.0** — month-based pagination via server-side search (`from/in/after/before`), the "Show more: {month}" button, RU/EN localization.
+- **0.7.1** — the "Show more" button is available even when the current month is empty.
+- **0.7.2** — skipping empty months (up to 24 in a row) and the "No more of your messages found" note.
