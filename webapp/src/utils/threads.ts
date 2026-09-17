@@ -14,10 +14,6 @@ export interface MyThread {
     replyCount: number;
     reactions: ReactionSummary[];
 
-    // Timestamp of the newest reply inside the thread, or null when the
-    // thread has no replies yet (the server creates no thread entity).
-    lastReplyAt: number | null;
-
     // True when the root post has no replies yet ("waiting for an answer").
     awaitingReply: boolean;
 
@@ -126,15 +122,6 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
 
     const roots = [...collected.values()].filter((post) => post.root_id === '' && !post.delete_at);
 
-    // The search results include the replies to those roots, so the
-    // last-reply date needs no extra requests.
-    const lastReplyAt = new Map<string, number>();
-    for (const post of collected.values()) {
-        if (post.root_id && !post.delete_at) {
-            lastReplyAt.set(post.root_id, Math.max(lastReplyAt.get(post.root_id) ?? 0, post.create_at));
-        }
-    }
-
     // One batch request carries the authoritative reply counts and the
     // reactions of every root; chunked because the server caps the id list.
     const batched = new Map<string, Post>();
@@ -161,7 +148,6 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
             createAt: root.create_at,
             replyCount,
             reactions,
-            lastReplyAt: replyCount === 0 ? null : lastReplyAt.get(root.id) ?? null,
             awaitingReply: replyCount === 0,
             post: root,
         };
@@ -225,16 +211,11 @@ async function fetchAllByScan(channelId: string, userId: string): Promise<MyThre
     }
 
     const replyCountByRoot = new Map<string, number>();
-    const lastReplyAt = new Map<string, number>();
     for (const post of posts.values()) {
         if (post.root_id && !post.delete_at) {
             replyCountByRoot.set(
                 post.root_id,
                 (replyCountByRoot.get(post.root_id) ?? 0) + 1,
-            );
-            lastReplyAt.set(
-                post.root_id,
-                Math.max(lastReplyAt.get(post.root_id) ?? 0, post.create_at),
             );
         }
     }
@@ -255,7 +236,6 @@ async function fetchAllByScan(channelId: string, userId: string): Promise<MyThre
             createAt: post.create_at,
             replyCount,
             reactions: [],
-            lastReplyAt: replyCount === 0 ? null : lastReplyAt.get(post.id) ?? null,
             awaitingReply: replyCount === 0,
             post,
         });
