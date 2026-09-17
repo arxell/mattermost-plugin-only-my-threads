@@ -202,6 +202,50 @@ describe('fetchCurrentMonth (search mode)', () => {
         expect(threads).toHaveLength(1);
         expect(threads[0]).toMatchObject({id: 'my-root', replyCount: 1, lastActivityAt: 200});
     });
+
+    it('keeps scanning pages until a short page arrives', async () => {
+        mockedSearch.mockRejectedValue(new Error('search disabled'));
+        const page0 = Array.from({length: 100}, (_, i) => makePost(`s0-${i}`));
+        const page1 = Array.from({length: 30}, (_, i) => makePost(`s1-${i}`));
+        mockedGetPosts.mockResolvedValueOnce(searchResponse(page0)).mockResolvedValueOnce(searchResponse(page1));
+        mockedUserThread.mockResolvedValue({reply_count: 0, last_reply_at: 0});
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+
+        expect(mockedGetPosts).toHaveBeenCalledTimes(2);
+        expect(mockedGetPosts).toHaveBeenLastCalledWith('ch1', 1, 100);
+        expect(threads).toHaveLength(130);
+    });
+
+    it('caps the fallback scan window at 1000 posts', async () => {
+        mockedSearch.mockRejectedValue(new Error('search disabled'));
+        mockedGetPosts.mockImplementation((_ch: string, page: number) =>
+            searchResponse(Array.from({length: 100}, (_, i) => makePost(`w${page}-${i}`))));
+
+        await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+
+        expect(mockedGetPosts).toHaveBeenCalledTimes(10);
+    });
+
+    it('mixes fulfilled and missing thread details and sorts by activity', async () => {
+        const answered = makePost('answered', {create_at: 100});
+        const awaiting = makePost('awaiting', {create_at: 400});
+        mockedSearch.mockResolvedValue(searchResponse([answered, awaiting]));
+        mockedUserThread.mockImplementation(async (_u: string, _t: string, rootId: string) => {
+            if (rootId === 'answered') {
+                return {reply_count: 2, last_reply_at: 300};
+            }
+            throw new Error('no thread');
+        });
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+
+        // The unreplied thread is newer (create_at 400) than the answered
+        // thread's last reply (300), so it sorts first.
+        expect(threads.map((t) => t.id)).toEqual(['awaiting', 'answered']);
+        expect(threads[0]).toMatchObject({replyCount: 0, awaitingReply: true, lastActivityAt: 400});
+        expect(threads[1]).toMatchObject({replyCount: 2, awaitingReply: false, lastActivityAt: 300});
+    });
 });
 
 describe('fetchOlderMonth', () => {

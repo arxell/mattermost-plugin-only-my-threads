@@ -83,7 +83,8 @@
             "^.+\\.(css|less|scss)$": "identity-obj-proxy",
             "^.*i18n.*\\.(json)$": "<rootDir>/tests/i18n_mock.json",
             "^bundle-loader\\?lazy\\!(.*)$": "$1",
-            "^mattermost-redux/client$": "mattermost-redux/lib/client"
+            "^mattermost-redux/(.*)$": "mattermost-redux/lib/$1",
+            "^@mattermost/types/(.*)$": "@mattermost/types/lib/$1"
         },
         "moduleDirectories": [
             "src",
@@ -95,7 +96,7 @@
             "jest-junit"
         ],
         "transformIgnorePatterns": [
-            "node_modules/(?!react-native|react-router|mattermost-webapp)"
+            "node_modules/(?!react-native|react-router|mattermost-webapp|serialize-error)"
         ],
         "setupFiles": [
             "jest-canvas-mock"

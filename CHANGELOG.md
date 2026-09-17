@@ -5,6 +5,7 @@ All notable changes to the Only My Threads plugin. The format follows [Keep a Ch
 ## [0.12.0] — 2026-09-17
 
 - Added French and German localization. The plugin now ships EN, RU, FR and DE dictionaries; the locale follows the account language, everything else still falls back to English. The dictionary symmetry unit test now checks every locale.
+- More unit tests (40 total): the plugin registration contract (the RHS component must be a component type — the React #130 guard — plus the header button, reducer and `posted` websocket wiring), `translate()` fallbacks and interpolation, multi-page and window-capped fallback scanning, and mixed fulfilled/missing thread details with activity ordering.
 
 ## [0.11.5] — 2026-09-17
 
