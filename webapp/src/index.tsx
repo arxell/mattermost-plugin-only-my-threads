@@ -79,8 +79,21 @@ export default class Plugin {
         // Keep the panel reaction chips in sync when reactions change
         // anywhere (added from the panel itself, in the channel, or by
         // other users).
-        const dispatchReaction = (msg: {data?: {reaction?: {post_id?: string}}}) => {
-            const postId = msg.data && msg.data.reaction ? msg.data.reaction.post_id : undefined;
+        const dispatchReaction = (msg: {data?: {reaction?: unknown}}) => {
+            // The host sends the reaction inside the event as a JSON
+            // string; older builds may hand over a parsed object.
+            const raw = msg.data ? msg.data.reaction : undefined;
+            let reaction: {post_id?: string} | undefined;
+            if (typeof raw === 'string') {
+                try {
+                    reaction = JSON.parse(raw) as {post_id?: string};
+                } catch {
+                    reaction = undefined;
+                }
+            } else {
+                reaction = raw as {post_id?: string} | undefined;
+            }
+            const postId = reaction ? reaction.post_id : undefined;
             if (postId) {
                 store.dispatch({type: REACTION_ACTION, postId});
             }
