@@ -483,7 +483,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                         ) : null}
                         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                             <span style={{fontSize: '12px', color: secondaryColor}}>
-                                {formatDateTime(thread.lastActivityAt)}
+                                {formatDateTime(thread.createAt)}
                             </span>
                             {thread.awaitingReply ? (
                                 <span

@@ -209,7 +209,7 @@ describe('fetchCurrentMonth (search mode)', () => {
         expect(threads[0]).toMatchObject({
             id: 'root1',
             replyCount: 3,
-            lastActivityAt: 200,
+            createAt: 100,
             awaitingReply: false,
         });
     });
@@ -223,7 +223,7 @@ describe('fetchCurrentMonth (search mode)', () => {
         expect(threads[0]).toMatchObject({
             id: 'root2',
             replyCount: 0,
-            lastActivityAt: 150,
+            createAt: 150,
             awaitingReply: true,
         });
     });
@@ -253,7 +253,7 @@ describe('fetchCurrentMonth (search mode)', () => {
 
         expect(mockedGetPosts).toHaveBeenCalledWith('ch1', 0, 100);
         expect(threads).toHaveLength(1);
-        expect(threads[0]).toMatchObject({id: 'my-root', replyCount: 1, lastActivityAt: 200});
+        expect(threads[0]).toMatchObject({id: 'my-root', replyCount: 1, createAt: 100});
     });
 
     it('keeps scanning pages until a short page arrives', async () => {
@@ -280,24 +280,25 @@ describe('fetchCurrentMonth (search mode)', () => {
         expect(mockedGetPosts).toHaveBeenCalledTimes(10);
     });
 
-    it('mixes fulfilled and missing thread details and sorts by activity', async () => {
+    it('mixes fulfilled and missing thread details and sorts by creation date', async () => {
         const answered = makePost('answered', {create_at: 100});
         const awaiting = makePost('awaiting', {create_at: 400});
         mockedSearch.mockResolvedValue(searchResponse([answered, awaiting]));
         mockedUserThread.mockImplementation(async (_u: string, _t: string, rootId: string) => {
             if (rootId === 'answered') {
-                return {reply_count: 2, last_reply_at: 300};
+                return {reply_count: 2, last_reply_at: 500};
             }
             throw new Error('no thread');
         });
 
         const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
 
-        // The unreplied thread is newer (create_at 400) than the answered
-        // thread's last reply (300), so it sorts first.
+        // Sorted by the root creation date only: the answered thread got a
+        // later reply (500) but was created earlier (100), so it stays
+        // below the newer unreplied one.
         expect(threads.map((t) => t.id)).toEqual(['awaiting', 'answered']);
-        expect(threads[0]).toMatchObject({replyCount: 0, awaitingReply: true, lastActivityAt: 400});
-        expect(threads[1]).toMatchObject({replyCount: 2, awaitingReply: false, lastActivityAt: 300});
+        expect(threads[0]).toMatchObject({replyCount: 0, awaitingReply: true, createAt: 400});
+        expect(threads[1]).toMatchObject({replyCount: 2, awaitingReply: false, createAt: 100});
     });
 });
 

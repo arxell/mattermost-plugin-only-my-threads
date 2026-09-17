@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.13.2] — 2026-09-17
+
+- Changed: the panel sorts threads by the root post creation date and shows that date. Previously both the order and the displayed date were the thread's last activity, so a new reply lifted an older thread to the top of its month.
+
 ## [0.13.1] — 2026-09-17
 
 - Fixed: reaction chips for emoji outside the built-in picker set rendered as `:name:` text. Any other reaction name now resolves to its server image — a custom emoji by id, a system emoji through a vendored name→file dictionary (from the host webapp's emoji.json, v11.9.0) — and is cached for the session; the picker set still renders as native unicode instantly. A broken image falls back to the text form.
