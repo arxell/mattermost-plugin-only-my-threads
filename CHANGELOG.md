@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.13.1] — 2026-09-17
+
+- Fixed: reaction chips for emoji outside the built-in picker set rendered as `:name:` text. Any other reaction name now resolves to its server image — a custom emoji by id, a system emoji through a vendored name→file dictionary (from the host webapp's emoji.json, v11.9.0) — and is cached for the session; the picker set still renders as native unicode instantly. A broken image falls back to the text form.
+
 ## [0.13.0] — 2026-09-17
 
 - Reactions in the panel: each thread row shows the reactions of its root post as chips (emoji + count, highlighted when yours). Clicking a chip toggles your reaction; a "+" chip and a smiley button in the hover toolbar open a picker with frequently used emoji. Reaction chips update live via the `reaction_added`/`reaction_removed` websocket events. Empty reaction lists (the server returns `null`) are handled safely.

@@ -16,6 +16,8 @@ import {getTheme} from 'mattermost-redux/selectors/entities/preferences';
 import {getCurrentTeam} from 'mattermost-redux/selectors/entities/teams';
 import {getCurrentUser, getCurrentUserId} from 'mattermost-redux/selectors/entities/users';
 
+import EmojiFace, {PICKER_EMOJIS} from 'components/emoji_face';
+
 const PLUGIN_STATE_KEY = 'plugins-only-my-threads';
 const REFRESH_DELAY_MS = 400;
 
@@ -80,16 +82,6 @@ const ITEM_TOOLBAR_CSS = `
 }
 .omt-emoji:hover { background: var(--omt-hover); }
 `;
-
-// Frequently used system emoji offered in the panel picker. Custom or
-// unknown reaction names render as ":name:" chips.
-const PICKER_EMOJIS: Array<[string, string]> = [
-    ['+1', '👍'], ['-1', '👎'], ['smile', '😄'], ['laughing', '😆'], ['joy', '😂'], ['wink', '😉'],
-    ['tada', '🎉'], ['heart', '❤️'], ['eyes', '👀'], ['white_check_mark', '✅'], ['x', '❌'], ['question', '❓'],
-    ['fire', '🔥'], ['clap', '👏'], ['wave', '👋'], ['rocket', '🚀'], ['thinking_face', '🤔'], ['pray', '🙏'],
-];
-const EMOJI_CHARS: Record<string, string> = Object.fromEntries(PICKER_EMOJIS);
-const emojiChar = (name: string): string => EMOJI_CHARS[name] ?? `:${name}:`;
 
 // Fallback colors used when the theme is not (yet) available in the store.
 const FALLBACK_TEXT = '#1f4157';
@@ -435,7 +427,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                                             toggleReaction(thread, summary.emojiName);
                                         }}
                                     >
-                                        {emojiChar(summary.emojiName)}
+                                        <EmojiFace name={summary.emojiName}/>
                                         {summary.count > 1 ? summary.count : ''}
                                     </button>
                                 ))}
