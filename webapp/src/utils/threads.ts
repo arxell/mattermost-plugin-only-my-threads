@@ -12,7 +12,6 @@ export interface MyThread {
     message: string;
     createAt: number;
     replyCount: number;
-    lastActivityAt: number;
     reactions: ReactionSummary[];
 
     // True when the root post has no replies yet ("waiting for an answer").
@@ -67,7 +66,7 @@ const SEARCH_PAGE_SIZE = 100;
 const MAX_SEARCH_PAGES = 10;
 
 function sortThreads(threads: MyThread[]): MyThread[] {
-    threads.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+    threads.sort((a, b) => b.createAt - a.createAt);
     return threads;
 }
 
@@ -82,8 +81,7 @@ function monthBounds(monthsBack: number): {after: string; before: string} {
     return {after: fmt(start), before: fmt(end)};
 }
 
-// The user's own root posts for one month, with reply counts and last
-// activity. Month pagination is server-side: the search request is bounded
+// The user's own root posts for one month, with reply counts. Month pagination is server-side: the search request is bounded
 // by after:/before: dates, so the cost never depends on channel volume.
 // Per-root thread lookups add counts (a missing thread means no replies).
 async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchContext, monthsBack: number): Promise<MyThread[]> {
@@ -135,7 +133,6 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
                 message: root.message,
                 createAt: root.create_at,
                 replyCount: detail.value.reply_count,
-                lastActivityAt: Math.max(detail.value.last_reply_at, root.create_at),
                 reactions,
                 awaitingReply: detail.value.reply_count === 0,
                 post: root,
@@ -147,7 +144,6 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
             message: root.message,
             createAt: root.create_at,
             replyCount: 0,
-            lastActivityAt: root.create_at,
             reactions,
             awaitingReply: true,
             post: root,
@@ -201,14 +197,9 @@ async function fetchAllByScan(channelId: string, userId: string): Promise<MyThre
         }
     }
 
-    const lastReplyAt = new Map<string, number>();
     const replyCountByRoot = new Map<string, number>();
     for (const post of posts.values()) {
         if (post.root_id && !post.delete_at) {
-            lastReplyAt.set(
-                post.root_id,
-                Math.max(lastReplyAt.get(post.root_id) ?? 0, post.create_at),
-            );
             replyCountByRoot.set(
                 post.root_id,
                 (replyCountByRoot.get(post.root_id) ?? 0) + 1,
@@ -231,7 +222,6 @@ async function fetchAllByScan(channelId: string, userId: string): Promise<MyThre
             message: post.message,
             createAt: post.create_at,
             replyCount,
-            lastActivityAt: Math.max(post.create_at, lastReplyAt.get(post.id) ?? 0),
             reactions: [],
             awaitingReply: replyCount === 0,
             post,
