@@ -37,7 +37,8 @@ Local server test accounts: `anton` / `ilya` / `sasha`, password `Passw0rd123!`.
 
 ## Publishing
 
-- Push to `main` freely (CI runs on every push: lint/test/build — that is fine).
+- **Every change lands via a separate PR from `main`** (branch off `origin/main`), and every PR records its changes in `CHANGELOG.md`. Direct pushes of feature work to `main` are no longer done (user decision, 2026-09-17).
+- CI runs on every push and pull request (lint/test/build — that is fine).
 - **Tags `v*` and releases — only on the user's explicit request.** Pushing a tag triggers the release job which publishes a GitHub release; the user once asked to revert an unsolicited release.
 - Keep the version history in `CHANGELOG.md` (new versions on top).
 
