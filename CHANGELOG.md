@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.12.0] — 2026-09-17
+
+- Added French and German localization. The plugin now ships EN, RU, FR and DE dictionaries; the locale follows the account language, everything else still falls back to English. The dictionary symmetry unit test now checks every locale.
+
 ## [0.11.5] — 2026-09-17
 
 - Added unit tests (25 total): search query building (`in:`/`in:~` privacy prefix, `from/after/before`), search paging (stops on a short page, 10-page cap), root/delete filtering and deduplication, `getUserThread` mapping incl. the missing-thread awaiting case, empty-month skipping and the 24-month cap, the channel-stream fallback, snippet rendering, the `posted` reducer (extracted into `reducer.ts`), and RU/EN dictionary symmetry with placeholder parity.

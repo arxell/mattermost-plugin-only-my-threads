@@ -8,7 +8,7 @@
 
 - `webapp/src/components/rhs.tsx` — the panel: states, month pagination, list, hover toolbar, thread opening, jump to post.
 - `webapp/src/utils/threads.ts` — data: month search (`searchPostsWithParams`, pages of 100, up to 10 pages), `getUserThread` for reply counts, channel stream fallback scan.
-- `webapp/src/i18n/messages.ts` — RU/EN dictionaries. Keys are `panel.*`; **dictionaries must stay symmetric** (every key in both languages); any other locale falls back to EN.
+- `webapp/src/i18n/messages.ts` — the localization dictionaries (en, ru, fr, de). Keys are `panel.*`; **dictionaries must stay symmetric across all locales** (a unit test enforces this and placeholder parity); any other locale falls back to EN.
 - `webapp/src/index.tsx` — registration: App Bar button, RHS component, reducer, `posted` websocket handler.
 - `plugin.json` — version and metadata (homepage/support/release_notes URLs are required by CI).
 - `.github/workflows/ci.yml` — mattermost plugin-ci + a release job on `v*` tags.
@@ -60,4 +60,4 @@ Local server test accounts: `anton` / `ilya` / `sasha`, password `Passw0rd123!`.
 - Behavior must be as native as possible, like the host's Saved Messages.
 - Design: compact spacing; an item shows the message text, with the date bottom-left and the reply count (💬 N / ⏳ for awaiting-reply) bottom-right.
 - The Jump button must keep using the stock permalink mechanics; the "view scrolls away after jump" glitch on v11.9 is a Mattermost bug (fixed upstream in 11.10/11.11), not the plugin's.
-- README, CHANGELOG, AGENTS.md and commit messages are English; the plugin's user-facing strings are localized RU/EN (`webapp/src/i18n/messages.ts`).
+- README, CHANGELOG, AGENTS.md and commit messages are English; the plugin's user-facing strings are localized in EN/RU/FR/DE (`webapp/src/i18n/messages.ts`).

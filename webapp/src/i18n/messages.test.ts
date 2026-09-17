@@ -3,27 +3,35 @@
 
 import {messages} from './messages';
 
+const locales = Object.keys(messages) as Array<keyof typeof messages>;
+
+const table = (locale: keyof typeof messages): Record<string, string> =>
+    messages[locale] as unknown as Record<string, string>;
+
 const placeholders = (text: string): string[] =>
     (text.match(/\{(\w+)\}/g) ?? []).sort();
 
 describe('i18n dictionaries', () => {
-    it('en and ru define exactly the same keys', () => {
-        expect(Object.keys(messages.ru).sort()).toEqual(Object.keys(messages.en).sort());
+    it('every locale defines exactly the same keys as English', () => {
+        for (const locale of locales) {
+            expect(Object.keys(table(locale)).sort()).toEqual(Object.keys(messages.en).sort());
+        }
     });
 
     it('every value is a non-empty string', () => {
-        for (const table of [messages.en, messages.ru]) {
-            for (const value of Object.values(table)) {
+        for (const locale of locales) {
+            for (const value of Object.values(table(locale))) {
                 expect(typeof value).toBe('string');
-                expect((value as string).length).toBeGreaterThan(0);
+                expect(value.length).toBeGreaterThan(0);
             }
         }
     });
 
-    it('every key uses the same {placeholders} in both languages', () => {
-        for (const key of Object.keys(messages.en)) {
-            expect(placeholders(String(messages.ru[key as keyof typeof messages.ru]))).
-                toEqual(placeholders(String(messages.en[key as keyof typeof messages.en])));
+    it('every key uses the same {placeholders} in all languages', () => {
+        for (const locale of locales) {
+            for (const key of Object.keys(messages.en)) {
+                expect(placeholders(table(locale)[key])).toEqual(placeholders(table('en')[key]));
+            }
         }
     });
 });

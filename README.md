@@ -17,7 +17,7 @@ Based on the official [mattermost-plugin-starter-template](https://github.com/ma
 - **Reply in place** — any thread opens in the right-hand sidebar with the reply composer, exactly like Saved Messages.
 - **Jump to the channel** — permalink navigation scrolls the channel to the post and highlights it.
 - **Month pagination** — only the current month is loaded; older months load on demand and empty months are skipped, so the cost never depends on channel volume.
-- **RU/EN localization**, live refresh on new messages, works in the web and desktop apps.
+- **EN, RU, FR and DE localization**, live refresh on new messages, works in the web and desktop apps.
 
 ## Quick Start
 
