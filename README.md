@@ -2,20 +2,24 @@
 
 # Only My Threads [![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue)](https://github.com/arxell/mattermost-plugin-only-my-threads/releases/latest) [![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Farxell%2Fmattermost-plugin-only-my-threads%2Fcoverage-badge%2Fcoverage-badge.json)](https://github.com/arxell/mattermost-plugin-only-my-threads/actions/workflows/ci.yml)
 
-A Mattermost plugin that shows **the threads of the current channel that you started** — in a right-hand panel, including messages nobody has replied to yet.
+A Mattermost plugin that shows **the threads you started** — in a right-hand panel for the current channel, and on a global "My threads" page across all channels — including messages nobody has replied to yet.
 
 </div>
 
 ![The Only My Threads panel with the Reply/Jump hover toolbar](img/screenshot.png)
+
+![The global My threads page with the hover toolbar and reaction chips](img/my-threads-page.png)
 
 Based on the official [mattermost-plugin-starter-template](https://github.com/mattermost/mattermost-plugin-starter-template).
 
 ## Key Features
 
 - **Your threads only** — lists the threads of the current channel whose first message is yours, including unreplied messages.
+- **One page for all channels** — the "My threads" item in the team menu (left sidebar) opens a global page with every thread you started in the team, most recent first.
 - **Awaiting reply at a glance** — unreplied messages are marked with ⏳, so you always see where you are waiting for an answer.
 - **Reply in place** — any thread opens in the right-hand sidebar with the reply composer, exactly like Saved Messages.
 - **Jump to the channel** — permalink navigation scrolls the channel to the post and highlights it.
+- **Reactions** — see the emoji reactions of each thread and add your own right from the list; chips update live.
 - **Month pagination** — only the current month is loaded; older months load on demand and empty months are skipped, so the cost never depends on channel volume.
 - **EN, RU, FR and DE localization**, live refresh on new messages, works in the web and desktop apps.
 
@@ -25,6 +29,7 @@ Based on the official [mattermost-plugin-starter-template](https://github.com/ma
 2. The panel lists your threads in the current channel; hover a row for actions.
 3. **Reply** opens the thread with the composer; **Jump** scrolls the channel to the post.
 4. Use the "Show more: {month}" button to page back through older threads.
+5. Or open **My threads** in the team menu (left sidebar) for all your threads across channels, with the same hover actions and reactions.
 
 ## Server requirements
 
@@ -88,8 +93,10 @@ docker exec local-server-app-1 mmctl --local plugin add /tmp/omt.tar.gz --force
 
 ## How it works
 
-- `webapp/src/index.tsx` — extension registration: the App Bar button (`registerChannelHeaderButtonAction`), the RHS panel (`registerRightHandSidebarComponent`), the reducer and the `posted` websocket handler for auto-refresh.
+- `webapp/src/index.tsx` — extension registration: the App Bar button (`registerChannelHeaderButtonAction`), the RHS panel (`registerRightHandSidebarComponent`), the global page (`registerCustomRoute`) and its team menu entry (`registerMainMenuAction`), the reducer and the `posted`/reaction websocket handlers for auto-refresh.
 - `webapp/src/components/rhs.tsx` — the panel: month pagination, states, the list, the Reply/Jump hover toolbar, opening a thread in the RHS (the host's `SELECT_POST` action + preloading), jump to post in the channel.
+- `webapp/src/components/my_threads_page.tsx` — the global page: one `getUserThreads` request filtered to the user's own root posts, cursor-based "Show more", the same hover toolbar and reaction chips, thread opening via permalink + `SELECT_POST` (the `/plug` route has no RHS container).
+- `webapp/src/components/hover_toolbar.ts` — the hover toolbar CSS and the picker emoji table shared by the panel and the page.
 - `webapp/src/utils/threads.ts` — month pagination via server-side search (`Client4.searchPostsWithParams` with `from/in/after/before` and page-by-page loading of 100 results), per-thread `Client4.getUserThread` requests for counts, and a channel stream fallback scan.
 - `webapp/src/i18n/messages.ts` — RU/EN dictionaries.
 

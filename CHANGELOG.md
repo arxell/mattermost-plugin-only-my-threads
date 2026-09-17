@@ -5,7 +5,7 @@ All notable changes to the Only My Threads plugin. The format follows [Keep a Ch
 ## [0.14.0] — 2026-09-17
 
 - New global "My threads" page: all threads the user started, across every channel, on a dedicated page at `/plug/only-my-threads/my-threads`. Opened from the "My threads" item in the team menu (left sidebar). Data comes from a single followed-threads request (`getUserThreads`, up to 999 per page with cursor "Show more"); "mine" is a client-side filter on the root post author. Rows show the snippet, channel, date and 💬 count / ⏳; clicking a row navigates to the post permalink and opens the thread in the right-hand sidebar with the composer. Direct page loads fall back to the user's first team when the store has no current team yet.
->>>>>>> c63008f (Add a global My threads page with a team menu entry)
+- The page rows share the panel's hover toolbar — add-reaction with the emoji picker, Reply and Jump — and show live reaction chips under the snippet (websocket updates, every emoji rendered via the shared `components/emoji_face.tsx`). The toolbar CSS (`components/hover_toolbar.ts`) and the plugin-state selectors (`reducer.ts`) are shared between the panel and the page, so the two lists stay identical.
 
 ## [0.13.3] — 2026-09-17
 

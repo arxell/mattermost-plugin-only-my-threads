@@ -2,14 +2,16 @@
 
 > **This file must stay in English.** All repository documentation (README, CHANGELOG, AGENTS.md) and commit messages are English; the plugin's user-facing strings are localized RU/EN in `webapp/src/i18n/messages.ts`.
 
-**Only My Threads** is a Mattermost plugin: an RHS panel listing the threads of the current channel that were started by the current user. Webapp-only (no server part since 0.4.x). Owner — Anton (GitHub `arxell`).
+**Only My Threads** is a Mattermost plugin: an RHS panel listing the threads of the current channel that were started by the current user, plus a global "My threads" page (all channels of the team). Webapp-only (no server part since 0.4.x). Owner — Anton (GitHub `arxell`).
 
 ## Layout
 
 - `webapp/src/components/rhs.tsx` — the panel: states, month pagination, list, hover toolbar, thread opening, jump to post.
+- `webapp/src/components/my_threads_page.tsx` — the global page (custom route `my-threads`): one `getUserThreads` request filtered to the user's own root posts, the same hover toolbar and reaction chips as the panel.
+- `webapp/src/components/hover_toolbar.ts` — the hover toolbar CSS and the picker emoji table shared by the panel and the page; keep the two lists visually identical.
 - `webapp/src/utils/threads.ts` — data: month search (`searchPostsWithParams`, pages of 100, up to 10 pages), `getUserThread` for reply counts, channel stream fallback scan.
-- `webapp/src/i18n/messages.ts` — the localization dictionaries (en, ru, fr, de). Keys are `panel.*`; **dictionaries must stay symmetric across all locales** (a unit test enforces this and placeholder parity); any other locale falls back to EN.
-- `webapp/src/index.tsx` — registration: App Bar button, RHS component, reducer, `posted` websocket handler.
+- `webapp/src/i18n/messages.ts` — the localization dictionaries (en, ru, fr, de). Keys are `panel.*`, `menu.*`, `page.*`; **dictionaries must stay symmetric across all locales** (a unit test enforces this and placeholder parity); any other locale falls back to EN.
+- `webapp/src/index.tsx` — registration: App Bar button, RHS component, the custom route and the team menu action for the page, reducer, `posted` and `reaction_added`/`reaction_removed` websocket handlers.
 - `plugin.json` — version and metadata (homepage/support/release_notes URLs are required by CI).
 - `.github/workflows/ci.yml` — mattermost plugin-ci + a release job on `v*` tags.
 - `local-server/` — docker compose (postgres + mattermost, amd64 via colima) and test data seeds.
@@ -54,6 +56,7 @@ Local server test accounts: `anton` / `ilya` / `sasha`, password `Passw0rd123!`.
 8. **Search term for a private channel**: `in:~name` (tilde prefix); public — `in:name`.
 9. **The App Bar** renders plugin icons on white plates — the icon must be colored (not `currentColor`).
 10. **The mattermost eslint config** requires: a comment before an attribute on its own line (easier to put the comment above the element), one prop per line when >2, single-line ternaries. Run lint before building.
+11. **Custom route page** (`/plug/...`): there is no RHS container — open threads by permalink navigation first, then dispatch `SELECT_POST` ~400 ms later. The page must paint its own `theme.centerChannelBg` (the route's slot sits over the sidebar-colored `.main-wrapper`). Direct page loads have no current team in the store — fall back to `getMyTeams(state)[0]`. `getUserThreads` does not include reactions: they are fetched per root post, capped at the first `MAX_REACTION_THREADS` (200) threads.
 
 ## User decisions that must not be violated
 
