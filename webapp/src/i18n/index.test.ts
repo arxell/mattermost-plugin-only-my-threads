@@ -1,8 +1,9 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-import {translate} from './index';
 import type {MessageId} from './messages';
+
+import {translate} from './index';
 
 describe('translate', () => {
     it('translates known ids for each shipped locale', () => {

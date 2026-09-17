@@ -49,7 +49,9 @@ jobs:
           git checkout -B coverage-badge
           git add coverage-badge.json
           git commit -m "Update coverage badge [skip ci]" || exit 0
-          git push origin coverage-badge
+          # The badge commit is not part of main's history, so the branch
+          # is rewritten on every run.
+          git push --force origin coverage-badge
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

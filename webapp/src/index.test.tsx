@@ -9,8 +9,10 @@
 // resolve; the registration test never calls the API anyway.
 jest.mock('mattermost-redux/client', () => ({Client4: {}}));
 
-import ChannelHeaderIcon from 'components/channel_header_icon';
 import {POSTED_ACTION, postedReducer} from 'reducer';
+
+import ChannelHeaderIcon from 'components/channel_header_icon';
+
 import type {PluginRegistry} from 'types/mattermost-webapp';
 
 // index.tsx calls window.registerPlugin at import time; stub it first.
