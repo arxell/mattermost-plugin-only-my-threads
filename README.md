@@ -24,23 +24,6 @@ Based on the official [mattermost-plugin-starter-template](https://github.com/ma
 3. **Reply** opens the thread with the composer; **Jump** scrolls the channel to the post.
 4. Use the "Show more: {month}" button to page back through older threads.
 
-## What it does
-
-- A "message card" icon on a white plate in the App Bar of every channel (tooltip — "My threads in this channel" / «Мои треды в канале»).
-- Clicking toggles the right-hand sidebar (RHS) with the list of your threads and messages in the current channel. The panel title is "My threads in this channel", with the channel name and the number of loaded threads in large type below it. Each row shows:
-  - a short snippet of the root message (markup stripped),
-  - the last activity date at the bottom left,
-  - the reply count at the bottom right (💬 N); for unreplied messages it is replaced by the ⏳ icon (the full "Awaiting reply" text is in the hover tooltip),
-  - sorted from the most recent by activity.
-- Hovering a row shows a toolbar in the Saved Messages style with two buttons:
-  - **Reply** — opens the thread **in the right-hand sidebar with the reply composer** ("Reply to this thread…"): you can type right away, Enter sends. Works for threads and for awaiting-reply messages alike; the thread is preloaded, so the panel appears instantly. Clicking the row itself does the same.
-  - **Jump** — navigates to the post in the channel: the feed scrolls to the message and the post is highlighted (stock Mattermost permalink mechanics, no page reload).
-- **Unreplied** messages are shown with the ⏳ icon (the panel's purpose: see where you are waiting for an answer); once a reply arrives, the item turns into a regular thread with a reply count.
-- Month-based pagination: the panel loads only the current month (`from:you in:channel after:… before:…` — server-side filtering); older months are loaded one by one via the "Show more: {month}" button; empty months are skipped automatically (up to 24 in a row, after which the panel reports that nothing else was found). Reply counts and dates are fetched with per-thread requests.
-- The list refreshes automatically on new messages in the channel (the `posted` websocket event) and via the refresh button (circular arrows icon) next to the channel name.
-- Localization: Russian and English. The language is taken from the account settings (Settings → Display → Language); the panel and the icon tooltip pick it up — the panel title/tooltip update on the next page load. Dictionaries live in `webapp/src/i18n/messages.ts`; any other language falls back to English.
-- Works in the web app and in the desktop app.
-
 ## Server requirements
 
 - **Mattermost Server ≥ 6.2** — the minimum declared in the manifest (`min_server_version: 6.2.1`): all the APIs used (search with `from/in/after/before` filters, the Threads API for reply counts, the webapp extension registry) are available from these versions on.
