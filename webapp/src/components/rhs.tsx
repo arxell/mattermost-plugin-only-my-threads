@@ -509,19 +509,10 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                             </div>
                         ) : null}
                         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                            <span style={{fontSize: '12px', color: secondaryColor, display: 'inline-flex', gap: '8px', flexWrap: 'wrap'}}>
-                                <span>
-                                    {t('panel.createdLabel')}
-                                    {' '}
-                                    {formatDateTime(thread.createAt)}
-                                </span>
-                                {thread.lastReplyAt ? (
-                                    <span>
-                                        {t('panel.lastReplyLabel')}
-                                        {' '}
-                                        {formatDateTime(thread.lastReplyAt)}
-                                    </span>
-                                ) : null}
+                            <span style={{fontSize: '12px', color: secondaryColor}}>
+                                {t('panel.createdLabel')}
+                                {' '}
+                                {formatDateTime(thread.createAt)}
                             </span>
                             {thread.awaitingReply ? (
                                 <span
