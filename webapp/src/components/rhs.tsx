@@ -17,9 +17,8 @@ import {getTheme} from 'mattermost-redux/selectors/entities/preferences';
 import {getCurrentTeam} from 'mattermost-redux/selectors/entities/teams';
 import {getCurrentUser, getCurrentUserId} from 'mattermost-redux/selectors/entities/users';
 
-import {ITEM_TOOLBAR_CSS} from 'components/hover_toolbar';
-
 import EmojiFace, {PICKER_EMOJIS} from 'components/emoji_face';
+import {ITEM_TOOLBAR_CSS} from 'components/hover_toolbar';
 
 // Fallback colors used when the theme is not (yet) available in the store.
 const FALLBACK_TEXT = '#1f4157';

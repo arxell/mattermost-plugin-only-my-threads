@@ -1,8 +1,10 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-// Shared hover-toolbar bits used by both thread lists (the channel RHS
+// Shared hover-toolbar styles used by both thread lists (the channel RHS
 // panel and the global My threads page), so the two stay pixel-identical.
+// The picker emoji table and the emoji rendering live in
+// components/emoji_face.tsx.
 
 // Hover toolbar styles for list items, kept close to the host's Saved
 // Messages actions. Inline styles cannot express :hover, so a prefixed
@@ -65,13 +67,3 @@ export const ITEM_TOOLBAR_CSS = `
 }
 .omt-emoji:hover { background: var(--omt-hover); }
 `;
-
-// Frequently used system emoji offered in the panel picker. Custom or
-// unknown reaction names render as ":name:" chips.
-export const PICKER_EMOJIS: Array<[string, string]> = [
-    ['+1', '👍'], ['-1', '👎'], ['smile', '😄'], ['laughing', '😆'], ['joy', '😂'], ['wink', '😉'],
-    ['tada', '🎉'], ['heart', '❤️'], ['eyes', '👀'], ['white_check_mark', '✅'], ['x', '❌'], ['question', '❓'],
-    ['fire', '🔥'], ['clap', '👏'], ['wave', '👋'], ['rocket', '🚀'], ['thinking_face', '🤔'], ['pray', '🙏'],
-];
-const EMOJI_CHARS: Record<string, string> = Object.fromEntries(PICKER_EMOJIS);
-export const emojiChar = (name: string): string => EMOJI_CHARS[name] ?? `:${name}:`;

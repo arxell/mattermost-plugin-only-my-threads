@@ -18,7 +18,8 @@ import {getTheme} from 'mattermost-redux/selectors/entities/preferences';
 import {getCurrentTeam, getMyTeams} from 'mattermost-redux/selectors/entities/teams';
 import {getCurrentUserId} from 'mattermost-redux/selectors/entities/users';
 
-import {ITEM_TOOLBAR_CSS, PICKER_EMOJIS, emojiChar} from 'components/hover_toolbar';
+import EmojiFace, {PICKER_EMOJIS} from 'components/emoji_face';
+import {ITEM_TOOLBAR_CSS} from 'components/hover_toolbar';
 
 const FALLBACK_TEXT = '#1f4157';
 const FALLBACK_LINK = '#166de0';
@@ -358,7 +359,7 @@ export default function MyThreadsPage() {
                                             toggleReaction(thread, summary.emojiName);
                                         }}
                                     >
-                                        {emojiChar(summary.emojiName)}
+                                        <EmojiFace name={summary.emojiName}/>
                                         {summary.count > 1 ? summary.count : ''}
                                     </button>
                                 ))}
