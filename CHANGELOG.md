@@ -2,6 +2,12 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.11.5] — 2026-09-17
+
+- Added unit tests (25 total): search query building (`in:`/`in:~` privacy prefix, `from/after/before`), search paging (stops on a short page, 10-page cap), root/delete filtering and deduplication, `getUserThread` mapping incl. the missing-thread awaiting case, empty-month skipping and the 24-month cap, the channel-stream fallback, snippet rendering, the `posted` reducer (extracted into `reducer.ts`), and RU/EN dictionary symmetry with placeholder parity.
+- CI measures jest coverage on pushes to `main` and publishes a coverage badge (shields.io endpoint fed from the `coverage-badge` branch).
+- Repository presentation: hero screenshot, "Download Latest Release" and coverage badges, Key Features and Quick Start sections, a Development guide with the local test server, CONTRIBUTING.md, a bug report issue template, and an English AGENTS.md for AI agents. README and CHANGELOG switched to English.
+
 ## [0.11.4] — 2026-09-16
 
 - Tightened vertical spacing: the channel name block (padding 12→6px) and the distance between the list's separator lines (row height 61→52px).

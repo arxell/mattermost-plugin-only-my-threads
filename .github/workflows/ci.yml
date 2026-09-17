@@ -17,6 +17,40 @@ jobs:
     uses: mattermost/actions-workflows/.github/workflows/plugin-ci.yml@main
     secrets: inherit
 
+  coverage:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - run: npm ci
+        working-directory: webapp
+
+      - run: npx jest --coverage --ci --forceExit --detectOpenHandles
+        working-directory: webapp
+
+      - name: Build badge JSON
+        run: >
+          node -e "const s=require('./webapp/coverage/coverage-summary.json');const pct=s.total.lines.pct;
+          const color=pct>=80?'brightgreen':pct>=60?'yellow':'red';
+          require('fs').writeFileSync('coverage-badge.json',JSON.stringify({schemaVersion:1,label:'coverage',message:pct+'%',color})+'\n');"
+          cat coverage-badge.json
+
+      - name: Publish badge branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B coverage-badge
+          git add coverage-badge.json
+          git commit -m "Update coverage badge [skip ci]" || exit 0
+          git push origin coverage-badge
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [plugin-ci]

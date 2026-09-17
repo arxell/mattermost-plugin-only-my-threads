@@ -5,7 +5,8 @@ import {getLocale, translate} from 'i18n';
 import manifest from 'manifest';
 import React from 'react';
 import {Provider} from 'react-redux';
-import type {Reducer, Store} from 'redux';
+import {POSTED_ACTION, postedReducer} from 'reducer';
+import type {Store} from 'redux';
 
 import type {GlobalState} from '@mattermost/types/store';
 
@@ -13,24 +14,6 @@ import ChannelHeaderIcon from 'components/channel_header_icon';
 import OnlyMyThreadsRHS from 'components/rhs';
 
 import type {PluginRegistry} from 'types/mattermost-webapp';
-
-const POSTED_ACTION = 'only-my-threads/posted';
-
-interface PostedState {
-    seq: number;
-    channelId: string | null;
-}
-
-const postedReducer: Reducer<PostedState> = (
-    state = {seq: 0, channelId: null},
-    action,
-) => {
-    const typedAction = action as {type?: string; channelId?: string};
-    if (typedAction.type === POSTED_ACTION && typedAction.channelId) {
-        return {seq: state.seq + 1, channelId: typedAction.channelId};
-    }
-    return state;
-};
 
 // Keeps a plugin render error from unmounting the whole Mattermost app.
 class RHSErrorBoundary extends React.Component<{children: React.ReactNode; store: Store<GlobalState>}, {error: string | null}> {

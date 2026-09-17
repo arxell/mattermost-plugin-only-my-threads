@@ -1,10 +1,12 @@
 <div align="center">
 
-# Only My Threads [![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue)](https://github.com/arxell/mattermost-plugin-only-my-threads/releases/latest)
+# Only My Threads [![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue)](https://github.com/arxell/mattermost-plugin-only-my-threads/releases/latest) [![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Farxell%2Fmattermost-plugin-only-my-threads%2Fcoverage-badge%2Fcoverage-badge.json)](https://github.com/arxell/mattermost-plugin-only-my-threads/actions/workflows/ci.yml)
 
 A Mattermost plugin that shows **the threads of the current channel that you started** — in a right-hand panel, including messages nobody has replied to yet.
 
 </div>
+
+![The Only My Threads panel with the Reply/Jump hover toolbar](img/screenshot.png)
 
 Based on the official [mattermost-plugin-starter-template](https://github.com/mattermost/mattermost-plugin-starter-template).
 
