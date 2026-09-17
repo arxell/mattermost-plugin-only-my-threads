@@ -11,6 +11,7 @@ import type {Store} from 'redux';
 import type {GlobalState} from '@mattermost/types/store';
 
 import ChannelHeaderIcon from 'components/channel_header_icon';
+import MyThreadsPage from 'components/my_threads_page';
 import OnlyMyThreadsRHS from 'components/rhs';
 
 import type {PluginRegistry} from 'types/mattermost-webapp';
@@ -63,6 +64,40 @@ export default class Plugin {
             () => store.dispatch(toggleRHSPlugin),
             translate(locale, 'panel.title'),
             translate(locale, 'panel.buttonTooltip'),
+        );
+
+        // The global "My threads" page: followed threads filtered to the
+        // ones the user started, across all channels. Opened from the
+        // account menu item below.
+        const MyThreadsRoute = () => (
+            <Provider store={store}>
+                <RHSErrorBoundary store={store}>
+                    <MyThreadsPage/>
+                </RHSErrorBoundary>
+            </Provider>
+        );
+        MyThreadsRoute.displayName = 'MyThreadsRoute';
+        registry.registerCustomRoute('my-threads', MyThreadsRoute);
+
+        // registerMainMenuAction's first argument is the menu item content.
+        const myThreadsMenuText = (
+            <span style={{display: 'inline-flex', alignItems: 'center', gap: '8px'}}>
+                <ChannelHeaderIcon/>
+                <span>{translate(locale, 'menu.myThreads')}</span>
+            </span>
+        );
+        registry.registerMainMenuAction(
+            myThreadsMenuText,
+            () => {
+                const url = '/plug/only-my-threads/my-threads';
+                try {
+                    window.history.pushState({}, '', url);
+                    window.dispatchEvent(new PopStateEvent('popstate', {state: window.history.state}));
+                } catch {
+                    window.location.assign(url);
+                }
+            },
+            <ChannelHeaderIcon/>,
         );
 
         registry.registerReducer(postedReducer);

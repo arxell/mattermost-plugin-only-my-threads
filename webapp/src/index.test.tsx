@@ -29,6 +29,8 @@ const registrationCalls = registerPluginMock.mock.calls.slice() as Array<[string
 const makeRegistry = () => ({
     registerRightHandSidebarComponent: jest.fn(() => ({toggleRHSPlugin: {type: 'TOGGLE_RHS'}})),
     registerChannelHeaderButtonAction: jest.fn(),
+    registerCustomRoute: jest.fn(),
+    registerMainMenuAction: jest.fn(),
     registerReducer: jest.fn(),
     registerWebSocketEventHandler: jest.fn(),
 });
@@ -84,6 +86,28 @@ describe('plugin registration', () => {
 
     it('registers the posted reducer', () => {
         expect(registry.registerReducer).toHaveBeenCalledWith(postedReducer);
+    });
+
+    it('registers the global My threads page as a custom route component TYPE', () => {
+        expect(registry.registerCustomRoute).toHaveBeenCalledTimes(1);
+        const routeCalls = registry.registerCustomRoute.mock.calls as unknown as Array<[string, unknown]>;
+        const [route, component] = routeCalls[0];
+        expect(route).toBe('my-threads');
+        expect(typeof component).toBe('function');
+    });
+
+    it('registers the account menu item navigating to the My threads page', () => {
+        expect(registry.registerMainMenuAction).toHaveBeenCalledTimes(1);
+        const menuCalls = registry.registerMainMenuAction.mock.calls as unknown as Array<[unknown, () => void, unknown]>;
+        const [, action] = menuCalls[0];
+
+        const pushState = jest.spyOn(window.history, 'pushState');
+        const dispatchEvent = jest.spyOn(window, 'dispatchEvent');
+        (action as () => void)();
+        expect(pushState).toHaveBeenCalledWith({}, '', '/plug/only-my-threads/my-threads');
+        expect(dispatchEvent).toHaveBeenCalled();
+        pushState.mockRestore();
+        dispatchEvent.mockRestore();
     });
 
     it('subscribes to the posted websocket event', () => {

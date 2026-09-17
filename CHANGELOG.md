@@ -2,6 +2,11 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.14.0] — 2026-09-17
+
+- New global "My threads" page: all threads the user started, across every channel, on a dedicated page at `/plug/only-my-threads/my-threads`. Opened from the "My threads" item in the team menu (left sidebar). Data comes from a single followed-threads request (`getUserThreads`, up to 999 per page with cursor "Show more"); "mine" is a client-side filter on the root post author. Rows show the snippet, channel, date and 💬 count / ⏳; clicking a row navigates to the post permalink and opens the thread in the right-hand sidebar with the composer. Direct page loads fall back to the user's first team when the store has no current team yet.
+>>>>>>> c63008f (Add a global My threads page with a team menu entry)
+
 ## [0.13.3] — 2026-09-17
 
 - Fixed: reaction chips did not update live — the host sends the reaction inside the `reaction_added`/`reaction_removed` websocket events as a JSON string, which the handler did not parse, so no chip refresh was ever dispatched (live updates effectively never worked; toggling from the panel masked it by refetching directly).
