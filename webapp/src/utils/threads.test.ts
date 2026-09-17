@@ -210,6 +210,7 @@ describe('fetchCurrentMonth (search mode)', () => {
             id: 'root1',
             replyCount: 3,
             createAt: 100,
+            lastReplyAt: 200,
             awaitingReply: false,
         });
     });
@@ -224,6 +225,7 @@ describe('fetchCurrentMonth (search mode)', () => {
             id: 'root2',
             replyCount: 0,
             createAt: 150,
+            lastReplyAt: null,
             awaitingReply: true,
         });
     });
@@ -253,7 +255,7 @@ describe('fetchCurrentMonth (search mode)', () => {
 
         expect(mockedGetPosts).toHaveBeenCalledWith('ch1', 0, 100);
         expect(threads).toHaveLength(1);
-        expect(threads[0]).toMatchObject({id: 'my-root', replyCount: 1, createAt: 100});
+        expect(threads[0]).toMatchObject({id: 'my-root', replyCount: 1, createAt: 100, lastReplyAt: 200});
     });
 
     it('keeps scanning pages until a short page arrives', async () => {
