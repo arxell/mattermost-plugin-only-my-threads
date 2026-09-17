@@ -1,8 +1,28 @@
-# Only My Threads
+<div align="center">
 
-A Mattermost plugin that adds an icon button to the App Bar (the vertical strip at the right edge of the window). Clicking it opens a right-hand panel, "My threads in this channel", listing **the threads of the current channel whose first message was written by you** — including messages that have not been replied to yet.
+# Only My Threads [![Download Latest Release](https://img.shields.io/badge/Download-Latest%20Release-blue)](https://github.com/arxell/mattermost-plugin-only-my-threads/releases/latest)
+
+A Mattermost plugin that shows **the threads of the current channel that you started** — in a right-hand panel, including messages nobody has replied to yet.
+
+</div>
 
 Based on the official [mattermost-plugin-starter-template](https://github.com/mattermost/mattermost-plugin-starter-template).
+
+## Key Features
+
+- **Your threads only** — lists the threads of the current channel whose first message is yours, including unreplied messages.
+- **Awaiting reply at a glance** — unreplied messages are marked with ⏳, so you always see where you are waiting for an answer.
+- **Reply in place** — any thread opens in the right-hand sidebar with the reply composer, exactly like Saved Messages.
+- **Jump to the channel** — permalink navigation scrolls the channel to the post and highlights it.
+- **Month pagination** — only the current month is loaded; older months load on demand and empty months are skipped, so the cost never depends on channel volume.
+- **RU/EN localization**, live refresh on new messages, works in the web and desktop apps.
+
+## Quick Start
+
+1. Click the Only My Threads icon in the App Bar (the vertical strip at the right edge of the window).
+2. The panel lists your threads in the current channel; hover a row for actions.
+3. **Reply** opens the thread with the composer; **Jump** scrolls the channel to the post.
+4. Use the "Show more: {month}" button to page back through older threads.
 
 ## What it does
 
@@ -32,16 +52,23 @@ Based on the official [mattermost-plugin-starter-template](https://github.com/ma
 
 ## Installation
 
-1. The server admin enables plugin uploads: **System Console → Plugins → Plugin Management → Enable Plugin Uploads** (if disabled yet) and enables **Enable Plugins**.
-2. **System Console → Plugins → Plugin Management → Upload Plugin** → pick the built `only-my-threads-<version>.tar.gz`.
-3. Find **Only My Threads** in the plugin list and click **Enable**.
-4. Reload the Mattermost client (Ctrl/Cmd+R).
+1. Download the latest `only-my-threads-<version>.tar.gz` from the [releases page](https://github.com/arxell/mattermost-plugin-only-my-threads/releases).
+2. The server admin enables plugin uploads: **System Console → Plugins → Plugin Management → Enable Plugin Uploads** (if disabled yet) and enables **Enable Plugins**.
+3. **System Console → Plugins → Plugin Management → Upload Plugin** → pick the downloaded bundle.
+4. Find **Only My Threads** in the plugin list and click **Enable**.
+5. Reload the Mattermost client (Ctrl/Cmd+R).
 
-There is no server part (webapp only); no tokens or settings are needed — the client talks to the API from your session. Server-side search must be enabled (it is by default); without it the fallback kicks in — a one-off read of the channel stream (a window of 1000 posts) without month pagination.
+There is no server part (webapp only); no tokens or settings are needed — the client talks to the API from your session.
 
-## Building from source
+## Development
 
-You need Node.js (18+) and Go (for the template's build tooling).
+### Prerequisites
+
+- Node.js 18+
+- Go (for the template's build tooling)
+- Docker (with [colima](https://github.com/abiosoft/colima) on Apple Silicon — the official Mattermost images are amd64-only) — only for the local test server
+
+### Build
 
 ```bash
 make dist        # builds the webapp and packs dist/only-my-threads-<version>.tar.gz
@@ -57,12 +84,31 @@ npm run build    # webapp bundle only (webapp/dist/main.js)
 npm test         # unit tests
 ```
 
+Run `make help` in the repository root for the full list of make targets.
+
+### Local test server
+
+`local-server/` contains a docker compose setup (PostgreSQL + Mattermost) with test data seeds:
+
+```bash
+cd local-server && docker compose up -d      # start the server at http://localhost:8065
+```
+
+Test accounts: `anton` / `ilya` / `sasha`, password `Passw0rd123!`. Install a freshly built bundle with:
+
+```bash
+docker cp dist/only-my-threads-<v>.tar.gz local-server-app-1:/tmp/omt.tar.gz
+docker exec local-server-app-1 mmctl --local plugin add /tmp/omt.tar.gz --force
+```
+
 ## How it works
 
 - `webapp/src/index.tsx` — extension registration: the App Bar button (`registerChannelHeaderButtonAction`), the RHS panel (`registerRightHandSidebarComponent`), the reducer and the `posted` websocket handler for auto-refresh.
 - `webapp/src/components/rhs.tsx` — the panel: month pagination, states, the list, the Reply/Jump hover toolbar, opening a thread in the RHS (the host's `SELECT_POST` action + preloading), jump to post in the channel.
 - `webapp/src/utils/threads.ts` — month pagination via server-side search (`Client4.searchPostsWithParams` with `from/in/after/before` and page-by-page loading of 100 results), per-thread `Client4.getUserThread` requests for counts, and a channel stream fallback scan.
 - `webapp/src/i18n/messages.ts` — RU/EN dictionaries.
+
+See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for the contribution workflow and [CHANGELOG.md](CHANGELOG.md) for the version history.
 
 ## Limitations
 
