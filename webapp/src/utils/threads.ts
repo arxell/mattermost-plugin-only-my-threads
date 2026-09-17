@@ -14,6 +14,10 @@ export interface MyThread {
     replyCount: number;
     reactions: ReactionSummary[];
 
+    // Timestamp of the newest reply inside the thread, or null when the
+    // thread has no replies yet (the server creates no thread entity).
+    lastReplyAt: number | null;
+
     // True when the root post has no replies yet ("waiting for an answer").
     awaitingReply: boolean;
 
@@ -132,6 +136,7 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
                 createAt: root.create_at,
                 replyCount: detail.value.reply_count,
                 reactions,
+                lastReplyAt: detail.value.last_reply_at || null,
                 awaitingReply: detail.value.reply_count === 0,
                 post: root,
             };
@@ -143,6 +148,7 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
             createAt: root.create_at,
             replyCount: 0,
             reactions,
+            lastReplyAt: null,
             awaitingReply: true,
             post: root,
         };
@@ -206,11 +212,16 @@ async function fetchAllByScan(channelId: string, userId: string): Promise<MyThre
     }
 
     const replyCountByRoot = new Map<string, number>();
+    const lastReplyAt = new Map<string, number>();
     for (const post of posts.values()) {
         if (post.root_id && !post.delete_at) {
             replyCountByRoot.set(
                 post.root_id,
                 (replyCountByRoot.get(post.root_id) ?? 0) + 1,
+            );
+            lastReplyAt.set(
+                post.root_id,
+                Math.max(lastReplyAt.get(post.root_id) ?? 0, post.create_at),
             );
         }
     }
@@ -231,6 +242,7 @@ async function fetchAllByScan(channelId: string, userId: string): Promise<MyThre
             createAt: post.create_at,
             replyCount,
             reactions: [],
+            lastReplyAt: replyCount === 0 ? null : lastReplyAt.get(post.id) ?? null,
             awaitingReply: replyCount === 0,
             post,
         });

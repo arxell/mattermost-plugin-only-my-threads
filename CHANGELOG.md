@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.13.5] — 2026-09-17
+
+- New: each thread row in the panel now shows both dates — "Created {date}" and, when the thread has replies, "Last reply {date}" (localized in EN/RU/FR/DE). Unreplied threads keep showing only the creation date, as before. The data comes from the thread-detail request the panel already makes (`last_reply_at`); no new requests are added. In the no-search fallback the date is computed from the scanned posts. Sorting stays by the creation date.
+
 ## [0.13.4] — 2026-09-17
 
 - Fixed: month pagination continued from the number of loaded pages instead of the calendar month where the previous page's data was found. With empty months in between, every "Show more" click rescanned the already-skipped empty months (extra search requests) and the button labeled the wrong month. Pagination now keeps a cursor on the actual oldest loaded month: the next click scans from there, and the button names the month it will really read first.
