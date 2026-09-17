@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.13.6] — 2026-09-17
+
+- Changed: the panel now loads each month's data with one batch request. After the month search it calls `POST /posts/ids` once for all root posts (chunked by 200) — that single response carries the reply counts and the reactions of every thread, replacing the two per-thread requests (`getUserThread` + `getReactionsForPost`) used before. The last-reply date is derived from the replies already present in the search results. A month with N threads now costs 2 requests instead of 2N+1. Per-post reaction fetches remain only for live websocket updates of a single changed post.
+
 ## [0.13.5] — 2026-09-17
 
 - New: each thread row in the panel now shows both dates — "Created {date}" and, when the thread has replies, "Last reply {date}" (localized in EN/RU/FR/DE). Unreplied threads keep showing only the creation date, as before. The data comes from the thread-detail request the panel already makes (`last_reply_at`); no new requests are added. In the no-search fallback the date is computed from the scanned posts. Sorting stays by the creation date.

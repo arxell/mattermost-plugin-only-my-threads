@@ -69,6 +69,9 @@ const MAX_EMPTY_MONTHS_TO_SKIP = 24;
 const SEARCH_PAGE_SIZE = 100;
 const MAX_SEARCH_PAGES = 10;
 
+// POST /posts/ids is capped server-side; larger root lists go in chunks.
+const BATCH_POSTS_SIZE = 200;
+
 function sortThreads(threads: MyThread[]): MyThread[] {
     threads.sort((a, b) => b.createAt - a.createAt);
     return threads;
@@ -85,9 +88,11 @@ function monthBounds(monthsBack: number): {after: string; before: string} {
     return {after: fmt(start), before: fmt(end)};
 }
 
-// The user's own root posts for one month, with reply counts. Month pagination is server-side: the search request is bounded
-// by after:/before: dates, so the cost never depends on channel volume.
-// Per-root thread lookups add counts (a missing thread means no replies).
+// The user's own root posts for one month, with reply counts, last-reply
+// dates and reactions. Month pagination is server-side: the search request
+// is bounded by after:/before: dates, so the cost never depends on channel
+// volume. Reply counts and reactions for every root come from a single
+// batch request (POST /posts/ids) instead of two requests per thread.
 async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchContext, monthsBack: number): Promise<MyThread[]> {
     const {after, before} = monthBounds(monthsBack);
     const channelTerm = (ctx.isPrivateChannel ? '~' : '') + ctx.channelName;
@@ -121,35 +126,43 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
 
     const roots = [...collected.values()].filter((post) => post.root_id === '' && !post.delete_at);
 
-    const details = await Promise.allSettled(roots.map((root) => Client4.getUserThread(userId, teamId, root.id)));
-    const reactionLists = await Promise.allSettled(roots.map((root) => Client4.getReactionsForPost(root.id)));
-
-    return sortThreads(roots.map((root, i) => {
-        const detail = details[i];
-        const reactionList = reactionLists[i] as PromiseSettledResult<Reaction[]>;
-        const reactions = reactionList.status === 'fulfilled' ? aggregateReactions(reactionList.value ?? [], userId) : [];
-        if (detail.status === 'fulfilled') {
-            return {
-                id: root.id,
-                channelId: root.channel_id,
-                message: root.message,
-                createAt: root.create_at,
-                replyCount: detail.value.reply_count,
-                reactions,
-                lastReplyAt: detail.value.last_reply_at || null,
-                awaitingReply: detail.value.reply_count === 0,
-                post: root,
-            };
+    // The search results include the replies to those roots, so the
+    // last-reply date needs no extra requests.
+    const lastReplyAt = new Map<string, number>();
+    for (const post of collected.values()) {
+        if (post.root_id && !post.delete_at) {
+            lastReplyAt.set(post.root_id, Math.max(lastReplyAt.get(post.root_id) ?? 0, post.create_at));
         }
+    }
+
+    // One batch request carries the authoritative reply counts and the
+    // reactions of every root; chunked because the server caps the id list.
+    const batched = new Map<string, Post>();
+    for (let i = 0; i < roots.length; i += BATCH_POSTS_SIZE) {
+        const chunk = roots.slice(i, i + BATCH_POSTS_SIZE).map((root) => root.id);
+
+        // Chunks are small and independent; a failed one only costs its own
+        // threads' counts (they fall back to the search-derived data).
+        // eslint-disable-next-line no-await-in-loop
+        const posts = await Client4.getPostsByIds(chunk).catch(() => [] as Post[]);
+        for (const post of posts) {
+            batched.set(post.id, post);
+        }
+    }
+
+    return sortThreads(roots.map((root) => {
+        const batch = batched.get(root.id);
+        const reactions = aggregateReactions(batch?.metadata?.reactions ?? [], userId);
+        const replyCount = batch?.reply_count ?? 0;
         return {
             id: root.id,
             channelId: root.channel_id,
             message: root.message,
             createAt: root.create_at,
-            replyCount: 0,
+            replyCount,
             reactions,
-            lastReplyAt: null,
-            awaitingReply: true,
+            lastReplyAt: replyCount === 0 ? null : lastReplyAt.get(root.id) ?? null,
+            awaitingReply: replyCount === 0,
             post: root,
         };
     }));
