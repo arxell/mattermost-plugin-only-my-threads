@@ -9,7 +9,7 @@
 // resolve; the registration test never calls the API anyway.
 jest.mock('mattermost-redux/client', () => ({Client4: {}}));
 
-import {POSTED_ACTION, postedReducer} from 'reducer';
+import {POSTED_ACTION, REACTION_ACTION, postedReducer} from 'reducer';
 
 import ChannelHeaderIcon from 'components/channel_header_icon';
 
@@ -106,6 +106,41 @@ describe('plugin registration', () => {
         it('ignores events without channel data', () => {
             handler({data: undefined});
             handler({data: {}});
+            expect(store.dispatch).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('reaction websocket handlers', () => {
+        let handler: (msg: {data?: {reaction?: unknown}}) => void;
+
+        beforeEach(() => {
+            const wsCalls = registry.registerWebSocketEventHandler.mock.calls as unknown as Array<[string, (msg: {data?: {reaction?: unknown}}) => void]>;
+            const reactionCalls = wsCalls.filter(([event]) => event === 'reaction_added' || event === 'reaction_removed');
+            expect(reactionCalls).toHaveLength(2);
+            handler = reactionCalls[0][1];
+        });
+
+        it('subscribes to both reaction events with one handler', () => {
+            const wsCalls = registry.registerWebSocketEventHandler.mock.calls as unknown as Array<[string, unknown]>;
+            const events = wsCalls.map(([event]) => event);
+            expect(events).toContain('reaction_added');
+            expect(events).toContain('reaction_removed');
+        });
+
+        it('parses the reaction JSON string the host sends', () => {
+            handler({data: {reaction: JSON.stringify({user_id: 'u1', post_id: 'p1', emoji_name: 'art'})}});
+            expect(store.dispatch).toHaveBeenCalledWith({type: REACTION_ACTION, postId: 'p1'});
+        });
+
+        it('still accepts an already-parsed reaction object', () => {
+            handler({data: {reaction: {post_id: 'p2'}}});
+            expect(store.dispatch).toHaveBeenCalledWith({type: REACTION_ACTION, postId: 'p2'});
+        });
+
+        it('ignores malformed payloads', () => {
+            handler({data: {reaction: '{not json'}});
+            handler({data: {}});
+            handler({data: undefined});
             expect(store.dispatch).not.toHaveBeenCalled();
         });
     });

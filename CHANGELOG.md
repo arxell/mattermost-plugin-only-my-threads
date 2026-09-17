@@ -2,6 +2,11 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.13.3] — 2026-09-17
+
+- Fixed: reaction chips did not update live — the host sends the reaction inside the `reaction_added`/`reaction_removed` websocket events as a JSON string, which the handler did not parse, so no chip refresh was ever dispatched (live updates effectively never worked; toggling from the panel masked it by refetching directly).
+- Fixed: the panel refresh button left stale reaction chips for threads whose reactions were last toggled from the panel — the per-post overrides now reset whenever the current month is refetched, so the refresh converges to the server state exactly like reopening the panel.
+
 ## [0.13.2] — 2026-09-17
 
 - Changed: the panel sorts threads by the root post creation date and shows that date. Previously both the order and the displayed date were the thread's last activity, so a new reply lifted an older thread to the top of its month.

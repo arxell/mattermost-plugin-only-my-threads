@@ -196,6 +196,22 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                 // Replace only the current month; keep already loaded older
                 // months (they are historical and never change).
                 setMonths((prev) => [result, ...(prev ? prev.slice(1) : [])]);
+
+                // The fresh month carries the server's current reactions,
+                // so the per-post overrides for its threads are stale by
+                // definition — drop them or the refresh button would keep
+                // showing chips as they were when the panel last toggled
+                // them. Overrides of other months' threads stay.
+                setReactionsByPost((prev) => {
+                    const freshIds = new Set(result.map((thread) => thread.id));
+                    const next: Record<string, ReactionSummary[]> = {};
+                    for (const [postId, summaries] of Object.entries(prev)) {
+                        if (!freshIds.has(postId)) {
+                            next[postId] = summaries;
+                        }
+                    }
+                    return next;
+                });
                 setError(null);
             }).catch((e: unknown) => {
                 if (cancelled) {
