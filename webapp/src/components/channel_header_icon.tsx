@@ -4,12 +4,10 @@
 import {useTranslation} from 'i18n';
 import React from 'react';
 
-// A "people list" glyph, embedded as a data URI so it does not depend on
-// static file serving. The App Bar renders plugin icons on a white
-// circular plate, so the colored PNG is used instead of currentColor —
-// white-on-white would be invisible.
-const ICON_DATA_URI = 'data:image/png;base64,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oq+WLV8uXgY2+wpQAvpX9nDWE6PBmmo94bU8ebAHuE3Ued33AUqEIgTU3eGKhIFFwCVY1ZVqigPEsLL5t4GsVnH9iyGlYs3KCJ/64lUkQ6Gtjuo1WGv5Eylv5ZJCUMxHeQ1hN6rav9IigSlMM3yGJ+fa/pPvr8j8eAjrSvai10LnwkF4A1iI1e2p5w7hxZDEOqhv9lqQUuOgJFPCT4E/xUrDbvdaqCrjDeAGYK648ro6teLk58fh9b/dSsUFxOr4LgQ+hzkxjUoUq6f3dYQNw9UjrmWOcgCvuXUF8UQcEWlB+RhWS24G1dsLqBzEgF8C3wL6A457IJ4Mcv8t9Vk5PGu1cFUQYSzwUaz82QysQka97hoOYRO/DFiDG9iN4+JVveNKMexkXrk4QjIFjhVo/CDwReDzWNXtYuv9VwMprAL5WuBfgGdB94LUfZn4DHm/zWGrKBoUm/wPA3OAc7HycrWkDEms/PxG4HtY+dptWJOphpn4DAWb8ysXR4jFhVCQFtApmGW4BGv+MAVbJqol+AH2lh/EvPlnsZ4GzwO/CThyQBW+213fZn44ilrPw7dHbOUMShDV47Fyc1OBPwE+glXYHI85kaFi/14OMiVZBrDeBTuBXwD/jXX/2A7sIdQUJxal75bryvlca4aST0h7dwQRx8HVVtDjsNq5J2Ll298P/CGmGK1Y6bVmTDmCWCZN5gNk0uxwsTc5iU3yIKZ6B7GupVswM76TdFcR4G2EAUlpSluEvpsay7TnS8U8+nndy0ilEMdxQ9ikH/vJ9AwKYApgDV9s8pPpTxzbpsXSPw8KxHAlqYL2LWlcU+7j4+Pj4+Pj4+Pj4+Pjkwf/D65FmqJPlPWKAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDE4LTA5LTI2VDE3OjQ3OjMxKzAyOjAwqlxWOAAAACV0RVh0ZGF0ZTptb2RpZnkAMjAxOC0wOS0yNlQxNzo0NzozMSswMjowMNsB7oQAAABGdEVYdHNvZnR3YXJlAEltYWdlTWFnaWNrIDYuNy44LTkgMjAxNi0wNi0xNiBRMTYgaHR0cDovL3d3dy5pbWFnZW1hZ2ljay5vcmfmvzS2AAAAGHRFWHRUaHVtYjo6RG9jdW1lbnQ6OlBhZ2VzADGn/7svAAAAGHRFWHRUaHVtYjo6SW1hZ2U6OmhlaWdodAA1MTLA0FBRAAAAF3RFWHRUaHVtYjo6SW1hZ2U6OldpZHRoADUxMhx8A9wAAAAZdEVYdFRodW1iOjpNaW1ldHlwZQBpbWFnZS9wbmc/slZOAAAAF3RFWHRUaHVtYjo6TVRpbWUAMTUzNzk3Njg1McSNPaQAAAATdEVYdFRodW1iOjpTaXplADE1LjdLQkJfd2OzAAAAcnRFWHRUaHVtYjo6VVJJAGZpbGU6Ly8uL3VwbG9hZHMvNTYvV2ZuWWZnMi8xNTcyLzM1OTI4NTMtYWxpZ24tZW1wbG95ZWUtZ2VuZXJhbC1odW1hbi1odW1hbi1saXN0LWxpc3QtbWVtYmVyXzEwNzc4Ni5wbmd9tKMQAAAAAElFTkSuQmCC';
-
+// Three stacked message cards with a checkmark — "my threads, answered".
+// The App Bar renders plugin icons on a white circular plate, so the glyph
+// uses a fixed brand blue instead of currentColor — white-on-white would
+// be invisible.
 export default function ChannelHeaderIcon() {
     const {t} = useTranslation();
     return (
@@ -17,13 +15,59 @@ export default function ChannelHeaderIcon() {
             aria-label={t('panel.title')}
             role={'icon'}
         >
-            <img
-                src={ICON_DATA_URI}
+            <svg
                 width={'20'}
                 height={'20'}
+                viewBox={'0 0 24 24'}
+                fill={'none'}
                 aria-hidden={'true'}
-                alt={''}
-            />
+            >
+                <rect
+                    x={'8'}
+                    y={'3'}
+                    width={'12'}
+                    height={'8'}
+                    rx={'1.5'}
+                    stroke={'#1C58D9'}
+                    strokeWidth={'1.5'}
+                    strokeLinecap={'round'}
+                    opacity={'0.35'}
+                />
+                <rect
+                    x={'5'}
+                    y={'6'}
+                    width={'12'}
+                    height={'8'}
+                    rx={'1.5'}
+                    stroke={'#1C58D9'}
+                    strokeWidth={'1.5'}
+                    strokeLinecap={'round'}
+                    opacity={'0.55'}
+                />
+                <rect
+                    x={'2'}
+                    y={'9'}
+                    width={'12'}
+                    height={'8'}
+                    rx={'1.5'}
+                    stroke={'#1C58D9'}
+                    strokeWidth={'1.5'}
+                    strokeLinecap={'round'}
+                />
+                <path
+                    d={'M5 13h6'}
+                    stroke={'#1C58D9'}
+                    strokeWidth={'1.5'}
+                    strokeLinecap={'round'}
+                />
+                <path
+                    d={'M16 19l2 2 4-4'}
+                    stroke={'#1C58D9'}
+                    strokeWidth={'1.75'}
+                    strokeLinecap={'round'}
+                    strokeLinejoin={'round'}
+                />
+            </svg>
         </span>
     );
 }
