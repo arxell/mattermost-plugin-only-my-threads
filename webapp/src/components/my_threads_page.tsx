@@ -2,9 +2,11 @@
 // See LICENSE.txt for license information.
 
 import {useTranslation} from 'i18n';
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {useSelector, useStore} from 'react-redux';
-import {messageToSnippet} from 'utils/threads';
+import {getReactionPostId, getReactionSeq} from 'reducer';
+import type {ReactionSummary} from 'utils/threads';
+import {aggregateReactions, messageToSnippet} from 'utils/threads';
 
 import type {GlobalState} from '@mattermost/types/store';
 import type {UserThreadWithPost} from '@mattermost/types/threads';
@@ -16,6 +18,8 @@ import {getTheme} from 'mattermost-redux/selectors/entities/preferences';
 import {getCurrentTeam, getMyTeams} from 'mattermost-redux/selectors/entities/teams';
 import {getCurrentUserId} from 'mattermost-redux/selectors/entities/users';
 
+import {ITEM_TOOLBAR_CSS, PICKER_EMOJIS, emojiChar} from 'components/hover_toolbar';
+
 const FALLBACK_TEXT = '#1f4157';
 const FALLBACK_LINK = '#166de0';
 const FALLBACK_ERROR = '#d24b4e';
@@ -23,6 +27,11 @@ const FALLBACK_ERROR = '#d24b4e';
 // One page of the followed-threads list; the server includes everything
 // the page needs (root post, reply counts, last activity) in one request.
 const THREADS_PAGE_SIZE = 999;
+
+// Reactions are not part of the threads response, so they are fetched per
+// root post — bounded to the head of the list so a huge account does not
+// trigger a request storm on load.
+const MAX_REACTION_THREADS = 200;
 
 type ThreadsPage = {
     threads: UserThreadWithPost[];
@@ -47,6 +56,7 @@ export default function MyThreadsPage() {
     const {locale, t} = useTranslation();
     const store = useStore();
     const userId = useSelector((state: GlobalState) => getCurrentUserId(state));
+
     // Direct /plug loads have no current team in the store yet — fall back
     // to the first of the user's teams.
     const team = useSelector((state: GlobalState) => {
@@ -57,6 +67,8 @@ export default function MyThreadsPage() {
         return getMyTeams(state)[0] ?? null;
     });
     const theme = useSelector((state: GlobalState) => getTheme(state));
+    const reactionSeq = useSelector(getReactionSeq);
+    const reactionPostId = useSelector(getReactionPostId);
 
     const [threads, setThreads] = useState<UserThreadWithPost[]>([]);
     const [cursor, setCursor] = useState<string | null>(null);
@@ -65,10 +77,18 @@ export default function MyThreadsPage() {
     const [error, setError] = useState<string | null>(null);
     const [manualRefresh, setManualRefresh] = useState(0);
 
+    // Live reaction chips, keyed by root post id, exactly like the channel
+    // panel: fetched for the head of the list, then refreshed by reaction
+    // websocket events.
+    const [reactionsByPost, setReactionsByPost] = useState<Record<string, ReactionSummary[]>>({});
+    const [pickerFor, setPickerFor] = useState<string | null>(null);
+    const fetchedReactionsRef = useRef<Set<string>>(new Set());
+
     const centerColor = theme.centerChannelColor || FALLBACK_TEXT;
     const linkColor = theme.linkColor || FALLBACK_LINK;
     const errorColor = theme.errorTextColor || FALLBACK_ERROR;
     const secondaryColor = withAlpha(centerColor, 0.6);
+
     // The custom route's slot has the theme's sidebar color behind it; the
     // native views paint their own center background, and so do we.
     const pageBg = theme.centerChannelBg || '#ffffff';
@@ -108,6 +128,74 @@ export default function MyThreadsPage() {
             cancelled = true;
         };
     }, [userId, team, manualRefresh]);
+
+    const refetchReactions = async (postId: string) => {
+        try {
+            const list = await Client4.getReactionsForPost(postId);
+            setReactionsByPost((prev) => ({...prev, [postId]: aggregateReactions(list, userId || '')}));
+        } catch {
+            // Keep the previously rendered chips.
+        }
+    };
+
+    // The threads response has no reactions; fetch them for the head of
+    // the list once per thread (the ref guards against refetch loops).
+    useEffect(() => {
+        if (!userId || threads.length === 0) {
+            return undefined;
+        }
+        let cancelled = false;
+        const missing = threads.slice(0, MAX_REACTION_THREADS).
+            filter((thread) => !fetchedReactionsRef.current.has(thread.id));
+        missing.forEach((thread) => fetchedReactionsRef.current.add(thread.id));
+        if (missing.length === 0) {
+            return undefined;
+        }
+        Promise.allSettled(missing.map((thread) => Client4.getReactionsForPost(thread.id))).then((results) => {
+            if (cancelled) {
+                return;
+            }
+            setReactionsByPost((prev) => {
+                const next = {...prev};
+                results.forEach((result, i) => {
+                    next[missing[i].id] = result.status === 'fulfilled' ? aggregateReactions(result.value ?? [], userId) : [];
+                });
+                return next;
+            });
+        });
+        return () => {
+            cancelled = true;
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [threads, userId]);
+
+    // Reaction websocket events refresh the chips of the affected thread.
+    useEffect(() => {
+        if (reactionPostId && reactionSeq > 0 && threads.some((thread) => thread.id === reactionPostId)) {
+            refetchReactions(reactionPostId);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [reactionSeq]);
+
+    const reactionsFor = (thread: UserThreadWithPost): ReactionSummary[] => reactionsByPost[thread.id] ?? [];
+
+    // Adds or removes the user's reaction, then refreshes that post's chips.
+    const toggleReaction = async (thread: UserThreadWithPost, emojiName: string) => {
+        if (!userId) {
+            return;
+        }
+        const alreadyMine = reactionsFor(thread).some((s) => s.emojiName === emojiName && s.mine);
+        try {
+            if (alreadyMine) {
+                await Client4.removeReaction(userId, thread.id, emojiName);
+            } else {
+                await Client4.addReaction(userId, thread.id, emojiName);
+            }
+        } catch {
+            return;
+        }
+        await refetchReactions(thread.id);
+    };
 
     const loadMore = () => {
         if (!userId || !team || !cursor || loadingMore) {
@@ -176,6 +264,22 @@ export default function MyThreadsPage() {
         minute: '2-digit',
     });
 
+    // Jumps to the post in its channel (permalink navigation only): the
+    // host scrolls the channel to it and highlights it, without opening
+    // the right-hand thread view.
+    const jumpToPost = (thread: UserThreadWithPost) => {
+        if (!team || !thread.post) {
+            return;
+        }
+        const url = `/${team.name}/pl/${thread.post.id}`;
+        try {
+            window.history.pushState({}, '', url);
+            window.dispatchEvent(new PopStateEvent('popstate', {state: window.history.state}));
+        } catch {
+            window.location.assign(url);
+        }
+    };
+
     const channelName = (channelId: string): string => {
         const channel = getChannel(store.getState() as GlobalState, channelId);
         return channel ? channel.display_name : '';
@@ -206,7 +310,7 @@ export default function MyThreadsPage() {
                 {threads.map((thread) => (
                     <div
                         key={thread.id}
-                        className={'omt-page-row'}
+                        className={'omt-item omt-page-row'}
                         role={'button'}
                         tabIndex={0}
                         onClick={() => openThread(thread)}
@@ -228,6 +332,86 @@ export default function MyThreadsPage() {
                                 imageLabel: t('snippet.image'),
                             })}
                         </div>
+                        {reactionsFor(thread).length > 0 ? (
+                            <div style={{display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '4px'}}>
+                                {reactionsFor(thread).map((summary) => (
+                                    <button
+                                        key={summary.emojiName}
+                                        className={'omt-chip'}
+                                        title={`:${summary.emojiName}:`}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            borderRadius: '10px',
+                                            padding: '1px 8px',
+                                            fontSize: '12px',
+                                            lineHeight: '1.5',
+                                            cursor: 'pointer',
+                                            color: centerColor,
+                                            fontFamily: 'inherit',
+                                            border: `1px solid ${summary.mine ? linkColor : withAlpha(centerColor, 0.25)}`,
+                                            background: summary.mine ? withAlpha(linkColor, 0.1) : 'transparent',
+                                        }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleReaction(thread, summary.emojiName);
+                                        }}
+                                    >
+                                        {emojiChar(summary.emojiName)}
+                                        {summary.count > 1 ? summary.count : ''}
+                                    </button>
+                                ))}
+                                <button
+                                    className={'omt-chip'}
+                                    title={t('panel.addReaction')}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        borderRadius: '10px',
+                                        padding: '1px 8px',
+                                        fontSize: '12px',
+                                        lineHeight: '1.5',
+                                        cursor: 'pointer',
+                                        color: secondaryColor,
+                                        fontFamily: 'inherit',
+                                        border: `1px dashed ${withAlpha(centerColor, 0.3)}`,
+                                        background: 'transparent',
+                                    }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setPickerFor(pickerFor === thread.id ? null : thread.id);
+                                    }}
+                                >
+                                    {'+'}
+                                </button>
+                            </div>
+                        ) : null}
+                        {pickerFor === thread.id ? (
+                            <div
+                                className={'omt-picker'}
+                                style={{
+                                    background: pageBg,
+                                    border: `1px solid ${withAlpha(centerColor, 0.15)}`,
+                                    '--omt-hover': withAlpha(centerColor, 0.08),
+                                } as React.CSSProperties}
+                            >
+                                {PICKER_EMOJIS.map(([name, char]) => (
+                                    <button
+                                        key={name}
+                                        className={'omt-emoji'}
+                                        title={`:${name}:`}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setPickerFor(null);
+                                            toggleReaction(thread, name);
+                                        }}
+                                    >
+                                        {char}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
                         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                             <span style={{fontSize: '12px', color: secondaryColor}}>
                                 {channelName(thread.post?.channel_id || '')}
@@ -247,6 +431,64 @@ export default function MyThreadsPage() {
                                     {thread.reply_count}
                                 </span>
                             )}
+                        </div>
+                        <div
+                            className={'omt-toolbar'}
+                            style={{
+                                background: pageBg,
+                                border: `1px solid ${withAlpha(centerColor, 0.15)}`,
+                                '--omt-hover': withAlpha(centerColor, 0.08),
+                            } as React.CSSProperties}
+                        >
+                            {/* A focused element removed on unmount breaks the
+                                host thread view's virtual list sizing, so the
+                                toolbar buttons never take focus on click. */}
+                            <button
+                                className={'omt-btn'}
+                                title={t('panel.addReaction')}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPickerFor(pickerFor === thread.id ? null : thread.id);
+                                }}
+                            >
+                                <svg
+                                    width={'13'}
+                                    height={'13'}
+                                    viewBox={'0 0 24 24'}
+                                    fill={'currentColor'}
+                                    aria-hidden={true}
+                                >
+                                    <path d={'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM12 18c-2.28 0-4.22-1.4-5-3.38.42-.72 1.4-1.02 2.2-.6l1.2.63c.98.52 2.14.52 3.12 0l1.2-.63c.8-.42 1.78-.12 2.2.6C16.22 16.6 14.28 18 12 18z'}/>
+                                </svg>
+                            </button>
+                            <button
+                                className={'omt-btn'}
+                                title={t('panel.reply')}
+                                onMouseDown={(e) => e.preventDefault()}
+                            >
+                                <svg
+                                    width={'13'}
+                                    height={'13'}
+                                    viewBox={'0 0 24 24'}
+                                    fill={'currentColor'}
+                                    aria-hidden={true}
+                                >
+                                    <path d={'M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z'}/>
+                                </svg>
+                                {t('panel.reply')}
+                            </button>
+                            <button
+                                className={'omt-btn'}
+                                title={t('panel.jump')}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    jumpToPost(thread);
+                                }}
+                            >
+                                {t('panel.jump')}
+                            </button>
                         </div>
                     </div>
                 ))}
@@ -275,6 +517,7 @@ export default function MyThreadsPage() {
                 background: pageBg,
             }}
         >
+            <style>{ITEM_TOOLBAR_CSS}</style>
             <div
                 style={{
                     maxWidth: '1000px',

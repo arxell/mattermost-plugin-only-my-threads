@@ -123,9 +123,7 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
     return sortThreads(roots.map((root, i) => {
         const detail = details[i];
         const reactionList = reactionLists[i] as PromiseSettledResult<Reaction[]>;
-        const reactions = reactionList.status === 'fulfilled' ?
-            aggregateReactions(reactionList.value ?? [], userId) :
-            [];
+        const reactions = reactionList.status === 'fulfilled' ? aggregateReactions(reactionList.value ?? [], userId) : [];
         if (detail.status === 'fulfilled') {
             return {
                 id: root.id,

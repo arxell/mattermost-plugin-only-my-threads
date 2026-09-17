@@ -4,6 +4,7 @@
 import {useTranslation} from 'i18n';
 import React, {useEffect, useRef, useState} from 'react';
 import {useSelector, useStore} from 'react-redux';
+import {getPostedSeq, getReactionPostId, getReactionSeq} from 'reducer';
 import type {MyThread, ReactionSummary, SearchContext} from 'utils/threads';
 import {aggregateReactions, fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from 'utils/threads';
 
@@ -16,96 +17,16 @@ import {getTheme} from 'mattermost-redux/selectors/entities/preferences';
 import {getCurrentTeam} from 'mattermost-redux/selectors/entities/teams';
 import {getCurrentUser, getCurrentUserId} from 'mattermost-redux/selectors/entities/users';
 
+import {ITEM_TOOLBAR_CSS} from 'components/hover_toolbar';
+
 import EmojiFace, {PICKER_EMOJIS} from 'components/emoji_face';
-
-const PLUGIN_STATE_KEY = 'plugins-only-my-threads';
-const REFRESH_DELAY_MS = 400;
-
-// Hover toolbar styles for list items, kept close to the host's Saved
-// Messages actions. Inline styles cannot express :hover, so a prefixed
-// stylesheet is injected once with the panel.
-const ITEM_TOOLBAR_CSS = `
-.omt-item { position: relative; }
-.omt-toolbar {
-    position: absolute;
-    right: 12px;
-    bottom: 6px;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 2px;
-    border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 120ms ease;
-    z-index: 5;
-}
-.omt-item:hover .omt-toolbar { opacity: 1; visibility: visible; }
-.omt-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    border: 0;
-    background: transparent;
-    border-radius: 4px;
-    padding: 4px 8px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 400;
-    color: inherit;
-    font-family: inherit;
-}
-.omt-btn:hover { background: var(--omt-hover); }
-.omt-btn:focus { outline: 1px solid rgba(0, 0, 0, 0.2); }
-.omt-picker {
-    position: absolute;
-    right: 12px;
-    bottom: 34px;
-    display: grid;
-    grid-template-columns: repeat(6, auto);
-    gap: 2px;
-    padding: 6px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-    z-index: 10;
-}
-.omt-emoji {
-    border: 0;
-    background: transparent;
-    border-radius: 4px;
-    padding: 4px;
-    font-size: 16px;
-    line-height: 1;
-    cursor: pointer;
-    font-family: inherit;
-}
-.omt-emoji:hover { background: var(--omt-hover); }
-`;
 
 // Fallback colors used when the theme is not (yet) available in the store.
 const FALLBACK_TEXT = '#1f4157';
 const FALLBACK_LINK = '#166de0';
 const FALLBACK_ERROR = '#d24b4e';
 
-const getPostedSeq = (state: GlobalState): number => {
-    const pluginState = (state as unknown as Record<string, {seq?: number; channelId?: string | null}>)[PLUGIN_STATE_KEY];
-    const currentChannelId = state.entities.channels.currentChannelId;
-    if (!pluginState || pluginState.channelId !== currentChannelId) {
-        return 0;
-    }
-    return pluginState.seq ?? 0;
-};
-
-const getReactionSeq = (state: GlobalState): number => {
-    const pluginState = (state as unknown as Record<string, {reactionSeq?: number}>)[PLUGIN_STATE_KEY];
-    return pluginState?.reactionSeq ?? 0;
-};
-
-const getReactionPostId = (state: GlobalState): string | null => {
-    const pluginState = (state as unknown as Record<string, {reactionPostId?: string | null}>)[PLUGIN_STATE_KEY];
-    return pluginState?.reactionPostId ?? null;
-};
+const REFRESH_DELAY_MS = 400;
 
 function withAlpha(color: string | undefined, alpha: number, fallback = FALLBACK_TEXT): string {
     const clean = (color || fallback).replace('#', '');
