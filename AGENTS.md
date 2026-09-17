@@ -1,61 +1,63 @@
-# AGENTS.md — инструкция для агентов, вносящих изменения в этот репозиторий
+# AGENTS.md — guide for agents making changes to this repository
 
-Плагин **Only My Threads** для Mattermost: панель RHS со списком тредов текущего канала, начатых текущим пользователем. Только webapp-часть (серверной нет с 0.4.x). Владелец — Anton (GitHub `arxell`).
+> **This file must stay in English.** Commit messages are English too; README, CHANGELOG and user-facing strings are Russian.
 
-## Раскладка
+**Only My Threads** is a Mattermost plugin: an RHS panel listing the threads of the current channel that were started by the current user. Webapp-only (no server part since 0.4.x). Owner — Anton (GitHub `arxell`).
 
-- `webapp/src/components/rhs.tsx` — панель: состояния, месячная пагинация, список, ховер-тулбар, открытие треда, переход к посту.
-- `webapp/src/utils/threads.ts` — данные: поиск по месяцу (`searchPostsWithParams`, пагинация 100/стр, до 10 стр), `getUserThread` для счётчиков, fallback-скан потока.
-- `webapp/src/i18n/messages.ts` — словари RU/EN. Ключи `panel.*`; **словари должны быть симметричны** (каждый ключ в обоих языках); любой другой язык → EN.
-- `webapp/src/index.tsx` — регистрация: App Bar кнопка, RHS-компонент, редьюсер, WS-обработчик `posted`.
-- `plugin.json` — версия и метаданные (homepage/support/release_notes URL обязательны для CI).
-- `.github/workflows/ci.yml` — mattermost plugin-ci + release job на тегах `v*`.
-- `local-server/` — docker compose (postgres + mattermost, amd64 через colima) и сиды тест-данных.
+## Layout
 
-## Цикл разработки
+- `webapp/src/components/rhs.tsx` — the panel: states, month pagination, list, hover toolbar, thread opening, jump to post.
+- `webapp/src/utils/threads.ts` — data: month search (`searchPostsWithParams`, pages of 100, up to 10 pages), `getUserThread` for reply counts, channel stream fallback scan.
+- `webapp/src/i18n/messages.ts` — RU/EN dictionaries. Keys are `panel.*`; **dictionaries must stay symmetric** (every key in both languages); any other locale falls back to EN.
+- `webapp/src/index.tsx` — registration: App Bar button, RHS component, reducer, `posted` websocket handler.
+- `plugin.json` — version and metadata (homepage/support/release_notes URLs are required by CI).
+- `.github/workflows/ci.yml` — mattermost plugin-ci + a release job on `v*` tags.
+- `local-server/` — docker compose (postgres + mattermost, amd64 via colima) and test data seeds.
+
+## Development loop
 
 ```bash
-# 1) правки кода в webapp/src/*
-# 2) версия: поменять "version" в plugin.json, затем ОБЯЗАТЕЛЬНО:
-make apply          # перегенерирует webapp/src/manifest.ts из plugin.json
-# 3) проверки (eslint строгий, конфиг mattermost):
+# 1) edit code in webapp/src/*
+# 2) version: bump "version" in plugin.json, then ALWAYS:
+make apply          # regenerates webapp/src/manifest.ts from plugin.json
+# 3) checks (eslint is strict, mattermost config):
 cd webapp && npx eslint src --ext .tsx,.ts && ./node_modules/.bin/tsc --noEmit
-# 4) сборка:
-make dist           # → dist/only-my-threads-<версия>.tar.gz
+# 4) build:
+make dist           # → dist/only-my-threads-<version>.tar.gz
 ```
 
-Установка на локальный сервер (docker):
+Install on the local server (docker):
 
 ```bash
 docker cp dist/only-my-threads-<v>.tar.gz local-server-app-1:/tmp/omt.tar.gz
 docker exec local-server-app-1 mmctl --local plugin add /tmp/omt.tar.gz --force
 ```
 
-Тестовые аккаунты локального сервера: `anton` / `ilya` / `sasha`, пароль `Passw0rd123!`.
+Local server test accounts: `anton` / `ilya` / `sasha`, password `Passw0rd123!`.
 
-## Публикация
+## Publishing
 
-- В `main` пушить свободно (CI на каждый пуш: lint/test/build — это нормально).
-- **Теги `v*` и релизы — только по явной просьбе пользователя.** Пуш тега запускает release job, который публикует релиз на GitHub; пользователь однажды просил откатить незапрошенный релиз.
-- Историю изменений вести в `CHANGELOG.md` (новые версии сверху).
+- Push to `main` freely (CI runs on every push: lint/test/build — that is fine).
+- **Tags `v*` and releases — only on the user's explicit request.** Pushing a tag triggers the release job which publishes a GitHub release; the user once asked to revert an unsolicited release.
+- Keep the version history in `CHANGELOG.md` (new versions on top).
 
-## Критичные грабли (выяснено кровью)
+## Critical gotchas (learned the hard way)
 
-1. **RHS-компонент**: в `registerRightHandSidebarComponent` передаётся ТИП компонента, не JSX-элемент — иначе React #130 и размонтирование всего приложения.
-2. **Открытие треда**: диспатчится сырой экшен `{type: 'SELECT_POST', postId, channelId, timestamp}`. НЕ использовать `UPDATE_RHS_STATE` — он затирает `selectedPostId`. Перед этим `receivedPosts`, после — предзагрузка `getPostThread` → `receivedPostsInThread`.
-3. **Гонка виртуального списка хоста**: сразу после `SELECT_POST` список треда иногда измеряет контейнер нулевым и рисует пустой тред. В `openThread` уже дёргается `window.dispatchEvent(new Event('resize'))` с задержками 50/300 мс — не удалять.
-4. **Ховер-тулбар** (`.omt-toolbar`, стили инжектятся тегом `<style>` с префиксом `omt-`): inline-стили не умеют `:hover`. Кнопки тулбара обязаны иметь `onMouseDown={(e) => e.preventDefault()}` — фокус на элементе, удаляемом при анмаунте панели, ломает измерения виртуального списка (пустой тред). Кнопка «Ответить» НЕ вызывает `stopPropagation`: её клик всплывает к строке, которая и открывает тред. `stopPropagation` есть только у «Перейти».
-5. **Тулбар невидим без ховера**: `visibility: hidden` не участвует в hit-testing — синтетический `.click()` по кнопке без реального ховера «пролетает». В браузерных тестах сначала `hover` на строку, потом клик.
-6. **CSRF**: любые in-page POST (например логин) без `X-CSRF-Token` из cookie `MMCSRFTOKEN` дают 401 И отзывают текущую сессию (придётся логиниться заново). GET с заголовком `X-Requested-With: XMLHttpRequest` безопасен.
-7. **Поиск**: сервер отдаёт одну страницу (~60 постов по умолчанию) — всегда листать `searchPostsWithParams` с `per_page: 100`.
-8. **Терм в поиске приватного канала**: `in:~имя` (тильда-префикс), публичного — `in:имя`.
-9. **App Bar** рисует иконки плагинов на белых плашках — иконка должна быть цветной (не `currentColor`).
-10. **eslint mattermost-конфиг** требует: комментарий перед атрибутом — на отдельной строке (проще комментарий над элементом), один prop на строку при >2, тернарники в одну строку. Проверять линт до сборки.
+1. **RHS component**: `registerRightHandSidebarComponent` takes the component TYPE, not a JSX element — otherwise React #130 and the whole app unmounts.
+2. **Opening a thread**: dispatch the raw action `{type: 'SELECT_POST', postId, channelId, timestamp}`. Do NOT use `UPDATE_RHS_STATE` — it clears `selectedPostId`. Dispatch `receivedPosts` before it, and preload `getPostThread` → `receivedPostsInThread` after.
+3. **Host virtual list race**: right after `SELECT_POST` the thread's virtual list sometimes measures its container as zero-sized and renders an empty thread. `openThread` already dispatches `window.dispatchEvent(new Event('resize'))` with 50/300 ms delays — do not remove that.
+4. **Hover toolbar** (`.omt-toolbar`, styles injected via a `<style>` tag with the `omt-` prefix): inline styles cannot express `:hover`. The toolbar buttons MUST have `onMouseDown={(e) => e.preventDefault()}` — focus on an element removed when the panel unmounts breaks the virtual list sizing (empty thread). The Reply button does NOT call `stopPropagation`: its click bubbles to the row, which opens the thread. Only the Jump button has `stopPropagation`.
+5. **The toolbar is invisible without hover**: `visibility: hidden` is skipped by hit-testing — a synthetic `.click()` on the button without a real hover passes through. In browser tests, `hover` the row first, then click.
+6. **CSRF**: any in-page POST (e.g. a login) without the `X-CSRF-Token` header from the `MMCSRFTOKEN` cookie returns 401 AND revokes the current session (you will have to log in again). GET with the `X-Requested-With: XMLHttpRequest` header is safe.
+7. **Search**: the server returns a single page (~60 posts by default) — always paginate with `searchPostsWithParams` and `per_page: 100`.
+8. **Search term for a private channel**: `in:~name` (tilde prefix); public — `in:name`.
+9. **The App Bar** renders plugin icons on white plates — the icon must be colored (not `currentColor`).
+10. **The mattermost eslint config** requires: a comment before an attribute on its own line (easier to put the comment above the element), one prop per line when >2, single-line ternaries. Run lint before building.
 
-## Решения пользователя, которые нельзя нарушать
+## User decisions that must not be violated
 
-- Никаких глобальных лимитов (типа 12000 тредов) и кешей — только пагинация по месяцам с кнопкой «Показать ещё» (пустые месяцы пропускаются, до 24 подряд).
-- Поведение — максимально нативное, как у Saved Messages хоста.
-- Дизайн: компактные отступы; в строке — текст сообщения, ниже дата слева и счётчик ответов (💬 N / ⏳ для «ожидающих ответа») справа.
-- Кнопка «Перейти» (permalink-переход) должна остаться штатной permalink-механикой; баг «вид уезжает после перехода» на v11.9 — баг самого Mattermost (фиксы в 11.10/11.11), не плагина.
-- Сообщения и CHANGELOG — на русском; коммиты — на английском.
+- No global limits (like 12000 threads) and no caches — only month pagination with the "Show more" button (empty months are skipped, up to 24 in a row).
+- Behavior must be as native as possible, like the host's Saved Messages.
+- Design: compact spacing; an item shows the message text, with the date bottom-left and the reply count (💬 N / ⏳ for awaiting-reply) bottom-right.
+- The Jump button must keep using the stock permalink mechanics; the "view scrolls away after jump" glitch on v11.9 is a Mattermost bug (fixed upstream in 11.10/11.11), not the plugin's.
+- README, CHANGELOG and user-facing strings are Russian; commit messages are English; this file is English.
