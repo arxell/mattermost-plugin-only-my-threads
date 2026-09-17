@@ -123,9 +123,7 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
     return sortThreads(roots.map((root, i) => {
         const detail = details[i];
         const reactionList = reactionLists[i] as PromiseSettledResult<Reaction[]>;
-        const reactions = reactionList.status === 'fulfilled' ?
-            aggregateReactions(reactionList.value ?? [], userId) :
-            [];
+        const reactions = reactionList.status === 'fulfilled' ? aggregateReactions(reactionList.value ?? [], userId) : [];
         if (detail.status === 'fulfilled') {
             return {
                 id: root.id,
@@ -161,15 +159,25 @@ export async function fetchCurrentMonth(userId: string, teamId: string, channelI
     }
 }
 
+// A month page returned to the panel: the threads plus the actual
+// calendar month they were found in (which may be further back than the
+// start when empty months were skipped). The panel continues pagination
+// from that month, so it never rescans the skipped months again and the
+// "Show more" label matches the real data.
+export interface OlderMonthPage {
+    threads: MyThread[];
+    monthsBack: number;
+}
+
 // Pages one month further back, skipping up to MAX_EMPTY_MONTHS_TO_SKIP
 // empty months. Resolves to null when there is nothing more to show.
-export async function fetchOlderMonth(userId: string, teamId: string, ctx: SearchContext, startMonthsBack: number): Promise<MyThread[] | null> {
+export async function fetchOlderMonth(userId: string, teamId: string, ctx: SearchContext, startMonthsBack: number): Promise<OlderMonthPage | null> {
     for (let back = startMonthsBack; back < startMonthsBack + MAX_EMPTY_MONTHS_TO_SKIP; back++) {
         // Sequential by nature: each month is only fetched when needed.
         // eslint-disable-next-line no-await-in-loop
         const threads = await fetchMonthThreads(userId, teamId, ctx, back);
         if (threads.length > 0) {
-            return threads;
+            return {threads, monthsBack: back};
         }
     }
     return null;

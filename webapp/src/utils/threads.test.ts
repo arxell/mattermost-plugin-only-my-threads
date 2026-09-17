@@ -309,24 +309,25 @@ describe('fetchOlderMonth', () => {
         mockedGetReactions.mockReset().mockResolvedValue([]);
     });
 
-    it('skips empty months and returns the first month with data', async () => {
+    it('skips empty months and returns the first month with data and its position', async () => {
         mockedSearch.
             mockResolvedValueOnce(searchResponse([])).
             mockResolvedValueOnce(searchResponse([])).
             mockResolvedValueOnce(searchResponse([makePost('old1', {create_at: 10})]));
         mockedUserThread.mockResolvedValue({reply_count: 2, last_reply_at: 20});
 
-        const threads = await fetchOlderMonth('u1', 't1', PUBLIC_CTX, 1);
+        const page = await fetchOlderMonth('u1', 't1', PUBLIC_CTX, 1);
 
         expect(mockedSearch).toHaveBeenCalledTimes(3);
         const {after, before} = expectedBounds(1);
         expect(mockedSearch.mock.calls[0][1].terms).toBe(`in:team-abc from:anton after:${after} before:${before}`);
         expect(mockedSearch.mock.calls[2][1].terms).toContain(expectedBounds(3).after);
-        if (threads === null) {
-            throw new Error('expected threads');
+        if (page === null) {
+            throw new Error('expected a page');
         }
-        expect(threads).toHaveLength(1);
-        expect(threads[0].id).toBe('old1');
+        expect(page.monthsBack).toBe(3);
+        expect(page.threads).toHaveLength(1);
+        expect(page.threads[0].id).toBe('old1');
     });
 
     it('gives up after 24 empty months and resolves null', async () => {
