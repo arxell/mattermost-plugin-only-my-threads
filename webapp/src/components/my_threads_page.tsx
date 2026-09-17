@@ -270,6 +270,17 @@ export default function MyThreadsPage() {
         }, 400);
     };
 
+    // Reply keeps the page open: the custom route has no right-hand
+    // sidebar, so an in-place thread view would replace the page itself.
+    // The permalink opens natively in a new tab (channel + thread with
+    // the composer).
+    const replyInNewTab = (thread: UserThreadWithPost) => {
+        if (!team || !thread.post) {
+            return;
+        }
+        window.open(`/${team.name}/pl/${thread.post.id}`, '_blank', 'noopener');
+    };
+
     const formatDateTime = (ms: number): string => new Date(ms).toLocaleString(locale, {
         day: '2-digit',
         month: '2-digit',
@@ -478,8 +489,12 @@ export default function MyThreadsPage() {
                             </button>
                             <button
                                 className={'omt-btn'}
-                                title={t('panel.reply')}
+                                title={t('page.reply')}
                                 onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    replyInNewTab(thread);
+                                }}
                             >
                                 <svg
                                     width={'13'}
