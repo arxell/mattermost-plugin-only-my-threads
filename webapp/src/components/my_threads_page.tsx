@@ -109,7 +109,14 @@ export default function MyThreadsPage() {
 
                 // "My" threads only: the root post's author is the current user.
                 const mine = (list.threads || []).filter((thread) => thread.post?.user_id === userId);
-                mine.sort((a, b) => (b.last_reply_at || b.post?.create_at || 0) - (a.last_reply_at || a.post?.create_at || 0));
+                mine.sort((a, b) => (b.post?.create_at || 0) - (a.post?.create_at || 0));
+
+                // The list is fresh, so the per-thread reaction fetches must
+                // run again — otherwise a manual refresh would keep the
+                // chips as they were on the previous load (same convergence
+                // rule as the panel's override reset).
+                fetchedReactionsRef.current = new Set();
+
                 setThreads(mine);
                 setCursor(list.next_cursor_id || null);
                 setError(null);
@@ -171,6 +178,12 @@ export default function MyThreadsPage() {
     }, [threads, userId]);
 
     // Reaction websocket events refresh the chips of the affected thread.
+    // NOTE: on v11.9 the host dispatches websocket events (to plugin
+    // handlers and into the store) only while a native view is active —
+    // on this /plug route the events arrive but are never dispatched, so
+    // this fires mainly for toggles made before navigating here. The
+    // refresh button is the reliable way to converge the chips; the
+    // effect stays for hosts where dispatching works.
     useEffect(() => {
         if (reactionPostId && reactionSeq > 0 && threads.some((thread) => thread.id === reactionPostId)) {
             refetchReactions(reactionPostId);
@@ -417,7 +430,7 @@ export default function MyThreadsPage() {
                             <span style={{fontSize: '12px', color: secondaryColor}}>
                                 {channelName(thread.post?.channel_id || '')}
                                 {channelName(thread.post?.channel_id || '') ? ' · ' : ''}
-                                {formatDateTime(thread.last_reply_at || thread.post?.create_at || 0)}
+                                {formatDateTime(thread.post?.create_at || 0)}
                             </span>
                             {thread.reply_count === 0 ? (
                                 <span

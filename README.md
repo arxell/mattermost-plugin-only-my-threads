@@ -107,6 +107,7 @@ See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for the contribution workflow and
 - Awaiting-reply messages and threads are shown for any month you scroll to with the "Show more" button; the depth is not limited.
 - The main mode requires server-side search (enabled by default) and the Threads feature; on old servers without them the fallback scan works (a window of the channel's last 1000 posts).
 - The panel shows the threads of the channel you are in; switching channels refreshes the list automatically.
+- On the global page, reaction chips do not update live: on **v11.9** the host dispatches websocket events only while a native view is active, not on plugin `/plug` routes. The page's refresh button brings the chips to the current server state.
 - On **v11.9** servers the channel view may "drift" to the recent messages after a Jump (permalink) — that is a Mattermost permalink-view scrolling bug itself (fixed in v11.10 and v11.11: "Fixed an issue with the wrong scroll position in the permalink view of channels with images", "Fixed a scroll issue caused by open graph previews in channel and permalink views"). Not reproducible on v11.11.
 
 ## License
