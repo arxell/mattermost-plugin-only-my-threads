@@ -139,6 +139,12 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     // Loaded months, index 0 = current month. Older months are appended
     // on demand by the "show more" button (server-side pagination).
     const [months, setMonths] = useState<MyThread[][] | null>(null);
+
+    // The calendar month of the oldest loaded page — the pagination
+    // cursor. Trailing loaded pages may come from months further back
+    // than months.length when empty months were skipped; continuing from
+    // months.length would rescan them and mislabel the "Show more" button.
+    const oldestLoadedBack = useRef(0);
     const [loading, setLoading] = useState(false);
     const [loadingOlder, setLoadingOlder] = useState(false);
     const [noMoreMonths, setNoMoreMonths] = useState(false);
@@ -167,6 +173,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     // Switching the channel resets pagination.
     useEffect(() => {
         setMonths(null);
+        oldestLoadedBack.current = 0;
         setNoMoreMonths(false);
         setReactionsByPost({});
         setPickerFor(null);
@@ -195,7 +202,10 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
 
                 // Replace only the current month; keep already loaded older
                 // months (they are historical and never change).
-                setMonths((prev) => [result, ...(prev ? prev.slice(1) : [])]);
+                setMonths((prev) => {
+                    oldestLoadedBack.current = Math.max(oldestLoadedBack.current, 0);
+                    return [result, ...(prev ? prev.slice(1) : [])];
+                });
 
                 // The fresh month carries the server's current reactions,
                 // so the per-post overrides for its threads are stale by
@@ -265,11 +275,12 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         }
         loadingOlderRef.current = true;
         setLoadingOlder(true);
-        fetchOlderMonth(userId, teamId, searchContext, months.length).then((older) => {
+        fetchOlderMonth(userId, teamId, searchContext, oldestLoadedBack.current + 1).then((older) => {
             if (older) {
+                oldestLoadedBack.current = older.monthsBack;
                 setMonths((prev) => {
                     const seen = new Set((prev || []).flat().map((thread) => thread.id));
-                    const fresh = older.filter((thread) => !seen.has(thread.id));
+                    const fresh = older.threads.filter((thread) => !seen.has(thread.id));
                     return [...(prev || []), fresh];
                 });
             } else {
@@ -588,7 +599,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
             disabled={loadingOlder}
             onClick={loadOlder}
         >
-            {loadingOlder ? t('panel.loading') : t('panel.showMore', {month: monthLabel(months.length, locale)})}
+            {loadingOlder ? t('panel.loading') : t('panel.showMore', {month: monthLabel(oldestLoadedBack.current + 1, locale)})}
         </button>
     ) : null;
 

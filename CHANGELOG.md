@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.13.4] — 2026-09-17
+
+- Fixed: month pagination continued from the number of loaded pages instead of the calendar month where the previous page's data was found. With empty months in between, every "Show more" click rescanned the already-skipped empty months (extra search requests) and the button labeled the wrong month. Pagination now keeps a cursor on the actual oldest loaded month: the next click scans from there, and the button names the month it will really read first.
+
 ## [0.13.3] — 2026-09-17
 
 - Fixed: reaction chips did not update live — the host sends the reaction inside the `reaction_added`/`reaction_removed` websocket events as a JSON string, which the handler did not parse, so no chip refresh was ever dispatched (live updates effectively never worked; toggling from the panel masked it by refetching directly).
