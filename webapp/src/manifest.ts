@@ -9,7 +9,7 @@ const manifest = JSON.parse(`
     "support_url": "https://github.com/arxell/mattermost-plugin-only-my-threads/issues",
     "release_notes_url": "https://github.com/arxell/mattermost-plugin-only-my-threads/releases",
     "icon_path": "assets/icon.svg",
-    "version": "0.13.8",
+    "version": "0.13.10",
     "min_server_version": "6.2.1",
     "webapp": {
         "bundle_path": "webapp/dist/main.js"

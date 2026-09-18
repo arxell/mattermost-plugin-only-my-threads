@@ -48,6 +48,11 @@ const searchResponse = (posts: Post[]) => ({
     posts: Object.fromEntries(posts.map((p) => [p.id, p])),
 });
 
+const dateOnlyOf = (ms: number): string => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 // Mirrors monthBounds() for the current month, monthsBack months back.
 const expectedBounds = (monthsBack: number) => {
     const start = new Date();
@@ -165,29 +170,84 @@ describe('fetchCurrentMonth (search mode)', () => {
         expect(mockedSearch.mock.calls[0][1].terms).toContain('in:~leads ');
     });
 
-    it('pages the search until a short page arrives', async () => {
-        const firstPage = Array.from({length: 100}, (_, i) => makePost(`p1-${i}`));
-        const secondPage = Array.from({length: 3}, (_, i) => makePost(`p2-${i}`));
-        mockedSearch.mockResolvedValueOnce(searchResponse(firstPage)).
-            mockResolvedValueOnce(searchResponse(secondPage));
+    it('treats a 99-result window as saturated too', async () => {
+        // Some backends truncate one short of the requested page; a
+        // 99-post window must still hop (observed in production).
+        const now = Date.now();
+        const day = 24 * 60 * 60 * 1000;
+        const first = Array.from({length: 99}, (_, i) => makePost('p1-' + i, {create_at: now - (i * 60_000)}));
+        const oldestFirst = now - (98 * 60_000);
+        const tail = makePost('tail', {create_at: oldestFirst - (5 * 60_000)});
+        const older = Array.from({length: 2}, (_, i) => makePost('p2-' + i, {create_at: oldestFirst - day - (i * 60_000)}));
+        mockedSearch.mockResolvedValueOnce(searchResponse(first)).
+            mockResolvedValueOnce(searchResponse([tail])).
+            mockResolvedValueOnce(searchResponse(older)).
+            mockResolvedValueOnce(searchResponse([]));
         mockedPostsByIds.mockResolvedValue([]);
 
         const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
 
-        expect(mockedSearch).toHaveBeenCalledTimes(2);
-        expect(mockedSearch.mock.calls[0][1].page).toBe(0);
-        expect(mockedSearch.mock.calls[1][1].page).toBe(1);
-        expect(threads).toHaveLength(103);
+        expect(mockedSearch.mock.calls.length).toBeGreaterThanOrEqual(3);
+        expect(threads).toHaveLength(102);
     });
 
-    it('stops after 10 full pages even on huge channels', async () => {
-        mockedSearch.mockImplementation((_teamId: string, params: {page: number}) =>
-            searchResponse(Array.from({length: 100}, (_, i) => makePost(`p${params.page}-${i}`))));
+    it('completes the saturated day and hops the window earlier', async () => {
+        // The backend truncates a saturated window at the newest 100 and
+        // reports no pages; the fetch must re-fetch the oldest fetched day
+        // on its own and then continue the month before that day.
+        const now = Date.now();
+        const day = 24 * 60 * 60 * 1000;
+        const first = Array.from({length: 100}, (_, i) => makePost('p1-' + i, {create_at: now - (i * 60_000)}));
+        const oldestFirst = now - (99 * 60_000);
+        const tail = makePost('tail', {create_at: oldestFirst - (5 * 60_000)}); // same day, cut by truncation
+        const older = Array.from({length: 3}, (_, i) => makePost('p2-' + i, {create_at: oldestFirst - day - (i * 60_000)}));
+        mockedSearch.mockResolvedValueOnce(searchResponse(first)). // month window, saturated
+            mockResolvedValueOnce(searchResponse([tail])). // the saturated day on its own
+            mockResolvedValueOnce(searchResponse(older)); // the rest of the month
+        mockedPostsByIds.mockResolvedValue([]);
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+
+        expect(mockedSearch).toHaveBeenCalledTimes(3);
+        const dayTerms = mockedSearch.mock.calls[1][1].terms as string;
+        expect(dayTerms).toContain('after:' + dateOnlyOf(oldestFirst - day));
+        expect(dayTerms).toContain('before:' + dateOnlyOf(oldestFirst + day));
+        const olderTerms = mockedSearch.mock.calls[2][1].terms as string;
+        expect(olderTerms).toContain('before:' + dateOnlyOf(oldestFirst));
+        expect(threads).toHaveLength(104);
+    });
+
+    it('stops window hopping when the day cannot move further', async () => {
+        // All 100 posts share one day: the first hop moves the window end
+        // onto that day, the second confirms there is nothing older (the
+        // mock keeps returning the same day), and day granularity cannot
+        // step any deeper — the fetch stops instead of looping.
+        const sameDay = new Date();
+        sameDay.setHours(12, 0, 0, 0);
+        const posts = Array.from({length: 100}, (_, i) => makePost('same-' + i, {create_at: sameDay.getTime() - i}));
+        mockedSearch.mockResolvedValue(searchResponse(posts));
+        mockedPostsByIds.mockResolvedValue([]);
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+
+        expect(mockedSearch).toHaveBeenCalledTimes(3);
+        expect(threads).toHaveLength(100);
+    });
+
+    it('stops after 40 window hops even on extreme channels', async () => {
+        mockedSearch.mockImplementation(() =>
+            searchResponse(Array.from({length: 100}, (_, i) => {
+                const d = new Date();
+                d.setDate(d.getDate() - (i % 3) - 1);
+                d.setHours(12 - (i % 10), 0, 0, 0);
+                return makePost('hop-' + Math.random() + '-' + i, {create_at: d.getTime()});
+            })));
         mockedPostsByIds.mockResolvedValue([]);
 
         await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
 
-        expect(mockedSearch).toHaveBeenCalledTimes(10);
+        expect(mockedSearch.mock.calls.length).toBeGreaterThanOrEqual(2);
+        expect(mockedSearch.mock.calls.length).toBeLessThanOrEqual(40);
     });
 
     it('keeps only live root posts and maps thread details', async () => {

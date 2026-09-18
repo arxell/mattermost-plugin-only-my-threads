@@ -61,9 +61,26 @@ const FALLBACK_PAGE_SIZE = 100;
 // When paging to older months, silently skip up to this many empty months.
 const MAX_EMPTY_MONTHS_TO_SKIP = 24;
 
-// Search paging: the server caps one page, so fetch month results in pages.
-const SEARCH_PAGE_SIZE = 100;
-const MAX_SEARCH_PAGES = 10;
+// The search backend (DB and Bleve alike on v11) never returns more
+// than ~100 matches and reports no further pages even when more exist,
+// silently dropping everything older than the newest 100. Month data is
+// therefore fetched in day-granularity windows: when a window saturates,
+// its end moves to the day of the oldest fetched post and the rest of
+// the month continues from there.
+const SEARCH_WINDOW_CAP = 100;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Some v11 backends (observed on Bleve-backed installs) truncate the
+// result one short of the requested per_page, so saturation is detected
+// with a one-post margin: a month genuinely holding 99 posts only costs
+// a couple of extra day-window requests, all deduplicated.
+const SEARCH_SATURATION_MIN = SEARCH_WINDOW_CAP - 1;
+const MAX_SEARCH_HOPS = 40;
+
+function dateOnly(ms: number): string {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 // POST /posts/ids is capped server-side; larger root lists go in chunks.
 const BATCH_POSTS_SIZE = 200;
@@ -90,34 +107,62 @@ function monthBounds(monthsBack: number): {after: string; before: string} {
 // volume. Reply counts and reactions for every root come from a single
 // batch request (POST /posts/ids) instead of two requests per thread.
 async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchContext, monthsBack: number): Promise<MyThread[]> {
-    const {after, before} = monthBounds(monthsBack);
+    const {after} = monthBounds(monthsBack);
     const channelTerm = (ctx.isPrivateChannel ? '~' : '') + ctx.channelName;
-    const terms = `in:${channelTerm} from:${ctx.username} after:${after} before:${before}`;
 
-    // The server caps a single search page (default ~60 posts); without
-    // paging, active users' replies push their older root posts out of the
-    // first page. Page through explicitly.
+    // Windowed fetching instead of server paging: a saturated window
+    // (exactly SEARCH_WINDOW_CAP results) means the backend truncated the
+    // older matches. The oldest fetched day D is re-fetched as its own day
+    // window first (before: would exclude D entirely, eating D's tail),
+    // then the month continues with before:D. Day granularity: a single
+    // day holding more than CAP of the user's posts stays truncated
+    // (documented limitation).
     const collected = new Map<string, Post>();
-    for (let page = 0; page < MAX_SEARCH_PAGES; page++) {
-        // Search pages must be fetched sequentially to stop early.
-        // eslint-disable-next-line no-await-in-loop
+    const searchWindow = async (windowAfter: string, windowBefore: string): Promise<Post[]> => {
+        const terms = `in:${channelTerm} from:${ctx.username} after:${windowAfter} before:${windowBefore}`;
         const results = await Client4.searchPostsWithParams(teamId, {
             terms,
             is_or_search: false,
-            page,
-            per_page: SEARCH_PAGE_SIZE,
+            page: 0,
+            per_page: SEARCH_WINDOW_CAP,
         } as never);
-        let added = 0;
-        for (const id of results.order) {
-            const post = results.posts ? results.posts[id] : undefined;
-            if (post && !collected.has(id)) {
-                collected.set(id, post);
-                added++;
+        return (results.order).
+            map((id: string) => (results.posts ? results.posts[id] : undefined)).
+            filter((post?: Post) => Boolean(post)) as Post[];
+    };
+    const merge = (posts: Post[]) => {
+        for (const post of posts) {
+            if (!collected.has(post.id)) {
+                collected.set(post.id, post);
             }
         }
-        if (added < SEARCH_PAGE_SIZE) {
+    };
+
+    let windowEnd = monthBounds(monthsBack).before;
+    for (let hop = 0; hop < MAX_SEARCH_HOPS; hop++) {
+        // Windows are sequential by nature: each depends on the previous
+        // one's oldest post.
+        // eslint-disable-next-line no-await-in-loop
+        const posts = await searchWindow(after, windowEnd);
+        merge(posts);
+        if (posts.length < SEARCH_SATURATION_MIN) {
             break;
         }
+        const oldest = Math.min(...posts.map((post: Post) => post.create_at));
+        const oldestDay = dateOnly(oldest);
+        const dayAfter = dateOnly(oldest + DAY_MS);
+        const dayBefore = dateOnly(oldest - DAY_MS);
+        if (dayAfter < windowEnd) {
+            // Complete the saturated day on its own before leaving it. The
+            // date qualifiers both exclude their own days (UTC), so a day
+            // is addressed by the window around it: after:D-1 before:D+1.
+            // eslint-disable-next-line no-await-in-loop
+            merge(await searchWindow(dayBefore, dayAfter));
+        }
+        if (oldestDay >= windowEnd) {
+            break; // no progress possible at day granularity
+        }
+        windowEnd = oldestDay;
     }
 
     const roots = [...collected.values()].filter((post) => post.root_id === '' && !post.delete_at);
