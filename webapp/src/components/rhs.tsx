@@ -365,13 +365,16 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         }
     };
 
-    const formatDateTime = (ms: number): string => new Date(ms).toLocaleString(locale, {
-        day: '2-digit',
-        month: '2-digit',
-        year: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+    // The panel shows one fixed date format everywhere (dd.mm.yy, hh:mm AM/PM)
+    // instead of the account locale's, per the owner's preference.
+    const formatDateTime = (ms: number): string => {
+        const d = new Date(ms);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yy = String(d.getFullYear()).slice(-2);
+        const time = d.toLocaleString(locale, {hour: '2-digit', minute: '2-digit'});
+        return `${dd}.${mm}.${yy}, ${time}`;
+    };
 
     const items = (months || []).flat();
 

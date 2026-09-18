@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.13.8] — 2026-09-18
+
+- Changed: the row date format is fixed to `dd.mm.yy, hh:mm AM/PM` (e.g. `18.09.26, 09:32 AM`) in every locale, instead of following the account locale's order (`09/18/26` for English).
+
 ## [0.13.7] — 2026-09-17
 
 - Removed: the "Last reply {date}" part of the row dates introduced in 0.13.5. The date derived from the search results only covered replies authored by the user (the search is filtered by sender), which read as wrong in threads where teammates replied last. Rows show "Created {date}" alone; sorting stays by the creation date.
