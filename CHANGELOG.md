@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.14.0] — 2026-09-18
+
+- New: the channel panel has an author picker in its header. By default it shows the signed-in user's own threads ("My threads"); picking any channel member from the dropdown switches the list to the threads that member started in this channel — same month pagination, reply counts, reaction chips and hover actions. The menu shows member avatars and has a search box (nickname and real names, Enter picks the first match, Escape closes). The choice resets back to "My threads" on channel switch.
+
 ## [0.13.10] — 2026-09-18
 
 - Fixed: on backends that truncate the search result one short of the requested page (observed 99 of 100 in production), the saturation was not detected and the month still collapsed to a single truncated request. Saturation is now detected with a one-post margin; a month genuinely holding 99 posts only costs a couple of extra deduplicated day-window requests.

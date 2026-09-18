@@ -13,6 +13,7 @@ Based on the official [mattermost-plugin-starter-template](https://github.com/ma
 ## Key Features
 
 - **Your threads only** — lists the threads of the current channel whose first message is yours, including unreplied messages.
+- **Anyone's threads** — a header picker switches the list to the threads any channel member started: avatars, search by nickname or real name, one request for the member list.
 - **Awaiting reply at a glance** — unreplied messages are marked with ⏳, so you always see where you are waiting for an answer.
 - **Reply in place** — any thread opens in the right-hand sidebar with the reply composer, exactly like Saved Messages.
 - **Jump to the channel** — permalink navigation scrolls the channel to the post and highlights it.
@@ -25,6 +26,7 @@ Based on the official [mattermost-plugin-starter-template](https://github.com/ma
 2. The panel lists your threads in the current channel; hover a row for actions.
 3. **Reply** opens the thread with the composer; **Jump** scrolls the channel to the post.
 4. Use the "Show more: {month}" button to page back through older threads.
+5. Pick a channel member in the header dropdown to browse **their** threads instead of yours; "My threads" brings the list back.
 
 ## Server requirements
 
