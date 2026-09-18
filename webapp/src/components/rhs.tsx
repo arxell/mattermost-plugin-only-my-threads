@@ -5,7 +5,7 @@ import {useTranslation} from 'i18n';
 import React, {useEffect, useRef, useState} from 'react';
 import {useSelector, useStore} from 'react-redux';
 import {formatPanelDate} from 'utils/dates';
-import {filterMembers} from 'utils/members';
+import {fetchAllChannelMembers, filterMembers} from 'utils/members';
 import type {MyThread, ReactionSummary, SearchContext} from 'utils/threads';
 import {aggregateReactions, fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from 'utils/threads';
 
@@ -237,14 +237,13 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         setAuthorId(null);
 
         // The host store does not guarantee profiles of the current
-        // channel's members; fetch them for the author dropdown (one
-        // request per channel, the first page is plenty for real teams).
-        // The endpoint rejects the sort parameter, so sort client-side.
+        // channel's members; fetch all pages of them for the author
+        // dropdown (the endpoint pages reliably and orders by username).
         if (channelId) {
             let cancelled = false;
-            Client4.getProfilesInChannel(channelId, 0, 200).then((profiles: UserProfile[]) => {
+            fetchAllChannelMembers(channelId).then((profiles) => {
                 if (!cancelled) {
-                    setMembers([...profiles].sort((a, b) => a.username.localeCompare(b.username)));
+                    setMembers(profiles);
                 }
             }).catch(() => {
                 // The dropdown just stays with the "My threads" option.

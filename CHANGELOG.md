@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.14.1] — 2026-09-18
+
+- Fixed: the author dropdown listed only the first 200 channel members, so in larger channels some members could not be picked even though their threads existed. All member pages are now loaded sequentially (the endpoint pages reliably and orders by username; a short page ends the walk, 25 pages max as a bound). Members beyond the first 200 appear after a moment.
+
 ## [0.14.0] — 2026-09-18
 
 - New: the channel panel has an author picker in its header. By default it shows the signed-in user's own threads ("My threads"); picking any channel member from the dropdown switches the list to the threads that member started in this channel — same month pagination, reply counts, reaction chips and hover actions. The menu shows member avatars and has a search box (nickname and real names, Enter picks the first match, Escape closes). The choice resets back to "My threads" on channel switch.
