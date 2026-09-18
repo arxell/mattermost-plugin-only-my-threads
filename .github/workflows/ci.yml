@@ -66,6 +66,15 @@ jobs:
           name: dist
           path: dist
 
+      # download-artifact v4 nests a single artifact's files one level
+      # deeper than expected on some runner versions; flatten so the
+      # release step always finds the tarball next to release-notes.md.
+      - name: Flatten the bundle directory
+        run: |
+          find dist -mindepth 2 -type f -exec mv -n {} dist/ \;
+          find dist -mindepth 1 -type d -exec rmdir {} + 2>/dev/null || true
+          ls -la dist
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
