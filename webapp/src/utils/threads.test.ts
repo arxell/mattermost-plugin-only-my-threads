@@ -274,6 +274,34 @@ describe('fetchCurrentMonth (search mode)', () => {
         });
     });
 
+    it('chunks the batch request by 200 roots and merges the chunks', async () => {
+        // 250 roots spread over three days; the mocked backend truncates
+        // every window at the newest 100 like the real one does.
+        const day = 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        const roots = Array.from({length: 250}, (_, i) =>
+            makePost('r' + i, {create_at: now - ((Math.floor(i / 100) + 1) * day) - (i * 60_000)}));
+        mockedSearch.mockImplementation((_teamId: string, params: {terms: string}) => {
+            const before = (/before:(\d{4}-\d{2}-\d{2})/).exec(params.terms)?.[1] ?? '';
+            const limit = before ? new Date(before + 'T00:00:00').getTime() : Number.POSITIVE_INFINITY;
+            const matching = roots.
+                filter((post) => post.create_at < limit).
+                sort((a, b) => b.create_at - a.create_at).
+                slice(0, 100);
+            return Promise.resolve(searchResponse(matching));
+        });
+        mockedPostsByIds.mockImplementation(async (ids: string[]) =>
+            ids.map((id) => ({id, reply_count: 1})));
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+
+        expect(mockedPostsByIds).toHaveBeenCalledTimes(2);
+        expect(mockedPostsByIds.mock.calls[0][0]).toHaveLength(200);
+        expect(mockedPostsByIds.mock.calls[1][0]).toHaveLength(50);
+        expect(threads).toHaveLength(250);
+        expect(threads.every((th) => th.replyCount === 1)).toBe(true);
+    });
+
     it('treats a missing thread as zero replies (awaiting)', async () => {
         mockedSearch.mockResolvedValue(searchResponse([makePost('root2', {create_at: 150})]));
         mockedPostsByIds.mockResolvedValue([]);

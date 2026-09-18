@@ -4,10 +4,13 @@
 import {useTranslation} from 'i18n';
 import React, {useEffect, useRef, useState} from 'react';
 import {useSelector, useStore} from 'react-redux';
+import {formatPanelDate} from 'utils/dates';
+import {filterMembers} from 'utils/members';
 import type {MyThread, ReactionSummary, SearchContext} from 'utils/threads';
 import {aggregateReactions, fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from 'utils/threads';
 
 import type {GlobalState} from '@mattermost/types/store';
+import type {UserProfile} from '@mattermost/types/users';
 
 import {receivedPosts, receivedPostsInThread} from 'mattermost-redux/actions/posts';
 import {Client4} from 'mattermost-redux/client';
@@ -81,6 +84,35 @@ const ITEM_TOOLBAR_CSS = `
     font-family: inherit;
 }
 .omt-emoji:hover { background: var(--omt-hover); }
+.omt-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 4px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+.omt-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    background: transparent;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+}
+.omt-menu-item:hover { background: var(--omt-hover); }
 `;
 
 // Fallback colors used when the theme is not (yet) available in the store.
@@ -152,6 +184,31 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const [error, setError] = useState<string | null>(null);
     const [manualRefresh, setManualRefresh] = useState(0);
 
+    // Whose threads the list shows: the current user by default, or any
+    // channel member picked in the header dropdown (a custom menu —
+    // native <option>s cannot render member avatars).
+    const [authorId, setAuthorId] = useState<string | null>(null);
+    const [members, setMembers] = useState<UserProfile[]>([]);
+    const [authorMenuOpen, setAuthorMenuOpen] = useState(false);
+    const [authorQuery, setAuthorQuery] = useState('');
+    const authorMenuRef = useRef<HTMLDivElement | null>(null);
+
+    // Closes the author menu on any click outside of it.
+    useEffect(() => {
+        if (!authorMenuOpen) {
+            return undefined;
+        }
+        const onDocMouseDown = (e: MouseEvent) => {
+            if (authorMenuRef.current && e.target instanceof Node && !authorMenuRef.current.contains(e.target)) {
+                setAuthorMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', onDocMouseDown);
+        return () => {
+            document.removeEventListener('mousedown', onDocMouseDown);
+        };
+    }, [authorMenuOpen]);
+
     // Live reaction chips, overriding the month-fetch data. Keyed by root
     // post id; refreshed after panel toggles and reaction websocket events.
     const [reactionsByPost, setReactionsByPost] = useState<Record<string, ReactionSummary[]>>({});
@@ -170,19 +227,42 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const secondaryColor = withAlpha(centerColor, 0.6);
     const toolbarBg = theme.centerChannelBg || '#ffffff';
 
-    // Switching the channel resets pagination.
+    // Switching the channel resets pagination and the author choice.
     useEffect(() => {
         setMonths(null);
         oldestLoadedBack.current = 0;
         setNoMoreMonths(false);
         setReactionsByPost({});
         setPickerFor(null);
+        setAuthorId(null);
+
+        // The host store does not guarantee profiles of the current
+        // channel's members; fetch them for the author dropdown (one
+        // request per channel, the first page is plenty for real teams).
+        // The endpoint rejects the sort parameter, so sort client-side.
+        if (channelId) {
+            let cancelled = false;
+            Client4.getProfilesInChannel(channelId, 0, 200).then((profiles: UserProfile[]) => {
+                if (!cancelled) {
+                    setMembers([...profiles].sort((a, b) => a.username.localeCompare(b.username)));
+                }
+            }).catch(() => {
+                // The dropdown just stays with the "My threads" option.
+            });
+            return () => {
+                cancelled = true;
+            };
+        }
+        return undefined;
     }, [channelId]);
 
+    const authorProfile = authorId ? members.find((m) => m.id === authorId) : null;
+    const authorMatches = filterMembers(members, authorQuery);
+    const authorUsername = authorProfile?.username || username || '';
     const searchContext: SearchContext = {
         channelName: channelName || '',
         isPrivateChannel,
-        username: username || '',
+        username: authorUsername,
     };
 
     useEffect(() => {
@@ -240,7 +320,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [channelId, channelName, isPrivateChannel, username, userId, teamId, postedSeq, manualRefresh]);
+    }, [channelId, channelName, isPrivateChannel, authorId, userId, teamId, postedSeq, manualRefresh]);
 
     const refetchReactions = async (postId: string) => {
         try {
@@ -365,16 +445,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         }
     };
 
-    // The panel shows one fixed date format everywhere (dd.mm.yy, hh:mm AM/PM)
-    // instead of the account locale's, per the owner's preference.
-    const formatDateTime = (ms: number): string => {
-        const d = new Date(ms);
-        const dd = String(d.getDate()).padStart(2, '0');
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const yy = String(d.getFullYear()).slice(-2);
-        const time = d.toLocaleString(locale, {hour: '2-digit', minute: '2-digit'});
-        return `${dd}.${mm}.${yy}, ${time}`;
-    };
+    const formatDateTime = (ms: number): string => formatPanelDate(ms, locale);
 
     const items = (months || []).flat();
 
@@ -620,26 +691,158 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                     borderBottom: `1px solid ${withAlpha(centerColor, 0.15)}`,
                 }}
             >
-                <div style={{fontWeight: 600, fontSize: '14px', color: centerColor}}>
-                    {channel.display_name}
-                    {items.length > 0 ? ` · ${items.length}` : ''}
+                <div style={{display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0}}>
+                    <div style={{fontWeight: 600, fontSize: '14px', color: centerColor, whiteSpace: 'nowrap'}}>
+                        {channel.display_name}
+                        {items.length > 0 ? ` · ${items.length}` : ''}
+                    </div>
                 </div>
-                <button
-                    className={'btn btn-tertiary'}
-                    onClick={() => setManualRefresh((n) => n + 1)}
-                    title={t('panel.refresh')}
-                    disabled={loading}
-                >
-                    <svg
-                        width={'18'}
-                        height={'18'}
-                        viewBox={'0 0 24 24'}
-                        fill={'currentColor'}
-                        aria-hidden={true}
+                <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                    {/* Whose threads the list shows: the signed-in user by
+                        default, or a channel member picked from the list.
+                        The person glyph marks that a member filter is on. */}
+                    {authorId ? (
+                        <svg
+                            width={'14'}
+                            height={'14'}
+                            viewBox={'0 0 24 24'}
+                            fill={'currentColor'}
+                            aria-hidden={true}
+                            style={{color: secondaryColor, flexShrink: 0}}
+                        >
+                            <path d={'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'}/>
+                        </svg>
+                    ) : null}
+                    <div
+                        ref={authorMenuRef}
+                        style={{position: 'relative'}}
                     >
-                        <path d={'M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z'}/>
-                    </svg>
-                </button>
+                        <button
+                            className={'btn btn-tertiary'}
+                            onClick={() => {
+                                setAuthorMenuOpen((open) => {
+                                    if (!open) {
+                                        setAuthorQuery('');
+                                    }
+                                    return !open;
+                                });
+                            }}
+                            title={t('panel.authorFilter')}
+                            aria-label={t('panel.authorFilter')}
+                            aria-expanded={authorMenuOpen}
+                            style={{fontSize: '12px', padding: '2px 6px', maxWidth: '140px', whiteSpace: 'nowrap'}}
+                        >
+                            {authorProfile ? authorProfile.username : t('panel.authorFilter')}
+                            {' ▾'}
+                        </button>
+                        {authorMenuOpen ? (
+                            <div
+                                className={'omt-menu'}
+                                style={{
+                                    background: toolbarBg,
+                                    border: `1px solid ${withAlpha(centerColor, 0.15)}`,
+                                    '--omt-hover': withAlpha(centerColor, 0.08),
+                                    color: centerColor,
+                                } as React.CSSProperties}
+                            >
+                                <button
+                                    className={'omt-menu-item'}
+                                    onClick={() => {
+                                        setAuthorMenuOpen(false);
+                                        setAuthorId(null);
+                                        setMonths(null);
+                                        oldestLoadedBack.current = 0;
+                                        setNoMoreMonths(false);
+                                        setReactionsByPost({});
+                                        setPickerFor(null);
+                                    }}
+                                >
+                                    <svg
+                                        width={'16'}
+                                        height={'16'}
+                                        viewBox={'0 0 24 24'}
+                                        fill={'currentColor'}
+                                        aria-hidden={true}
+                                        style={{color: secondaryColor, flexShrink: 0}}
+                                    >
+                                        <path d={'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'}/>
+                                    </svg>
+                                    {t('panel.authorFilter')}
+                                </button>
+                                <input
+                                    type={'text'}
+                                    className={'form-control'}
+                                    value={authorQuery}
+                                    autoFocus={true}
+                                    placeholder={t('panel.authorSearch')}
+                                    aria-label={t('panel.authorSearch')}
+                                    onChange={(e) => setAuthorQuery(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Escape') {
+                                            setAuthorMenuOpen(false);
+                                        } else if (e.key === 'Enter' && authorMatches.length > 0) {
+                                            const pick = authorMatches[0];
+                                            setAuthorMenuOpen(false);
+                                            setAuthorId(pick.id);
+                                            setMonths(null);
+                                            oldestLoadedBack.current = 0;
+                                            setNoMoreMonths(false);
+                                            setReactionsByPost({});
+                                            setPickerFor(null);
+                                        }
+                                    }}
+                                    style={{fontSize: '13px', padding: '4px 8px', marginBottom: '4px'}}
+                                />
+                                {authorMatches.length === 0 ? (
+                                    <div style={{padding: '6px 8px', fontSize: '12px', color: secondaryColor}}>
+                                        {t('panel.noMatch')}
+                                    </div>
+                                ) : null}
+                                {authorMatches.map((m) => (
+                                    <button
+                                        key={m.id}
+                                        className={'omt-menu-item'}
+                                        onClick={() => {
+                                            setAuthorMenuOpen(false);
+                                            setAuthorId(m.id);
+                                            setMonths(null);
+                                            oldestLoadedBack.current = 0;
+                                            setNoMoreMonths(false);
+                                            setReactionsByPost({});
+                                            setPickerFor(null);
+                                        }}
+                                        style={m.id === authorId ? {background: withAlpha(linkColor, 0.1)} : undefined}
+                                    >
+                                        <img
+                                            src={Client4.getProfilePictureUrl(m.id, m.last_picture_update)}
+                                            alt={''}
+                                            width={18}
+                                            height={18}
+                                            style={{borderRadius: '50%', flexShrink: 0}}
+                                        />
+                                        {m.username}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+                    <button
+                        className={'btn btn-tertiary'}
+                        onClick={() => setManualRefresh((n) => n + 1)}
+                        title={t('panel.refresh')}
+                        disabled={loading}
+                    >
+                        <svg
+                            width={'18'}
+                            height={'18'}
+                            viewBox={'0 0 24 24'}
+                            fill={'currentColor'}
+                            aria-hidden={true}
+                        >
+                            <path d={'M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z'}/>
+                        </svg>
+                    </button>
+                </div>
             </div>
             {loading && months !== null ? (
                 <div style={{padding: '8px 16px', color: secondaryColor, fontSize: '12px'}}>
