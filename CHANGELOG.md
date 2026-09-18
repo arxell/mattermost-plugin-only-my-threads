@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.13.10] — 2026-09-18
+
+- Fixed: on backends that truncate the search result one short of the requested page (observed 99 of 100 in production), the saturation was not detected and the month still collapsed to a single truncated request. Saturation is now detected with a one-post margin; a month genuinely holding 99 posts only costs a couple of extra deduplicated day-window requests.
+
 ## [0.13.9] — 2026-09-18
 
 - Fixed: posts disappeared from the panel in heavy months. The search backend never returns more than ~100 matches and reports no further pages even when more exist, silently dropping everything older than the newest 100 — so a busy user's earlier roots (e.g. started mid-month) fell out of the list entirely. The month is now fetched in day-granularity windows: a saturated window moves its `before:` bound to the oldest fetched day and the search repeats, with deduplication by post id. Limitation: a single day holding more than 100 of the user's own posts in one channel stays truncated at the newest 100 of that day.

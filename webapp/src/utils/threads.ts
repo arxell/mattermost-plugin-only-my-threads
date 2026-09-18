@@ -69,6 +69,12 @@ const MAX_EMPTY_MONTHS_TO_SKIP = 24;
 // the month continues from there.
 const SEARCH_WINDOW_CAP = 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Some v11 backends (observed on Bleve-backed installs) truncate the
+// result one short of the requested per_page, so saturation is detected
+// with a one-post margin: a month genuinely holding 99 posts only costs
+// a couple of extra day-window requests, all deduplicated.
+const SEARCH_SATURATION_MIN = SEARCH_WINDOW_CAP - 1;
 const MAX_SEARCH_HOPS = 40;
 
 function dateOnly(ms: number): string {
@@ -139,7 +145,7 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
         // eslint-disable-next-line no-await-in-loop
         const posts = await searchWindow(after, windowEnd);
         merge(posts);
-        if (posts.length < SEARCH_WINDOW_CAP) {
+        if (posts.length < SEARCH_SATURATION_MIN) {
             break;
         }
         const oldest = Math.min(...posts.map((post: Post) => post.create_at));

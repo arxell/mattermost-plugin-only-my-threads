@@ -170,6 +170,27 @@ describe('fetchCurrentMonth (search mode)', () => {
         expect(mockedSearch.mock.calls[0][1].terms).toContain('in:~leads ');
     });
 
+    it('treats a 99-result window as saturated too', async () => {
+        // Some backends truncate one short of the requested page; a
+        // 99-post window must still hop (observed in production).
+        const now = Date.now();
+        const day = 24 * 60 * 60 * 1000;
+        const first = Array.from({length: 99}, (_, i) => makePost('p1-' + i, {create_at: now - (i * 60_000)}));
+        const oldestFirst = now - (98 * 60_000);
+        const tail = makePost('tail', {create_at: oldestFirst - (5 * 60_000)});
+        const older = Array.from({length: 2}, (_, i) => makePost('p2-' + i, {create_at: oldestFirst - day - (i * 60_000)}));
+        mockedSearch.mockResolvedValueOnce(searchResponse(first)).
+            mockResolvedValueOnce(searchResponse([tail])).
+            mockResolvedValueOnce(searchResponse(older)).
+            mockResolvedValueOnce(searchResponse([]));
+        mockedPostsByIds.mockResolvedValue([]);
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+
+        expect(mockedSearch.mock.calls.length).toBeGreaterThanOrEqual(3);
+        expect(threads).toHaveLength(102);
+    });
+
     it('completes the saturated day and hops the window earlier', async () => {
         // The backend truncates a saturated window at the newest 100 and
         // reports no pages; the fetch must re-fetch the oldest fetched day
