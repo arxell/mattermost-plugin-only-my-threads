@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.13.9] — 2026-09-18
+
+- Fixed: posts disappeared from the panel in heavy months. The search backend never returns more than ~100 matches and reports no further pages even when more exist, silently dropping everything older than the newest 100 — so a busy user's earlier roots (e.g. started mid-month) fell out of the list entirely. The month is now fetched in day-granularity windows: a saturated window moves its `before:` bound to the oldest fetched day and the search repeats, with deduplication by post id. Limitation: a single day holding more than 100 of the user's own posts in one channel stays truncated at the newest 100 of that day.
+
 ## [0.13.8] — 2026-09-18
 
 - Changed: the row date format is fixed to `dd.mm.yy, hh:mm AM/PM` (e.g. `18.09.26, 09:32 AM`) in every locale, instead of following the account locale's order (`09/18/26` for English).
