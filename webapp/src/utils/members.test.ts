@@ -3,7 +3,17 @@
 
 import type {UserProfile} from '@mattermost/types/users';
 
-import {filterMembers} from './members';
+import {Client4} from 'mattermost-redux/client';
+
+import {fetchAllChannelMembers, filterMembers} from './members';
+
+jest.mock('mattermost-redux/client', () => ({
+    Client4: {
+        getProfilesInChannel: jest.fn(),
+    },
+}));
+
+const mockedProfilesInChannel = Client4.getProfilesInChannel as jest.Mock;
 
 const member = (username: string, overrides: Partial<UserProfile> = {}): UserProfile => ({
     id: username,
@@ -19,6 +29,55 @@ const TEAM = [
     member('ilya', {nickname: 'Ilyusha'}),
     member('sasha'),
 ];
+
+describe('fetchAllChannelMembers', () => {
+    const member = (username: string): UserProfile => ({id: username, username} as UserProfile);
+
+    beforeEach(() => {
+        mockedProfilesInChannel.mockReset();
+    });
+
+    it('loads pages until a short page arrives', async () => {
+        const page0 = Array.from({length: 200}, (_, i) => member('u' + String(i).padStart(3, '0')));
+        const page1 = Array.from({length: 200}, (_, i) => member('u' + String(i + 200).padStart(3, '0')));
+        const page2 = [member('zz9')];
+        mockedProfilesInChannel.
+            mockResolvedValueOnce(page0).
+            mockResolvedValueOnce(page1).
+            mockResolvedValueOnce(page2);
+
+        const members = await fetchAllChannelMembers('ch1');
+
+        expect(mockedProfilesInChannel).toHaveBeenCalledTimes(3);
+        expect(mockedProfilesInChannel).toHaveBeenLastCalledWith('ch1', 2, 200);
+        expect(members).toHaveLength(401);
+    });
+
+    it('stops after one short page for small channels', async () => {
+        mockedProfilesInChannel.mockResolvedValue([member('a'), member('b')]);
+
+        const members = await fetchAllChannelMembers('ch1');
+
+        expect(mockedProfilesInChannel).toHaveBeenCalledTimes(1);
+        expect(members.map((m) => m.username)).toEqual(['a', 'b']);
+    });
+
+    it('is bounded to 25 pages', async () => {
+        mockedProfilesInChannel.mockResolvedValue(Array.from({length: 200}, (_, i) => member('x' + i)));
+
+        await fetchAllChannelMembers('ch1');
+
+        expect(mockedProfilesInChannel).toHaveBeenCalledTimes(25);
+    });
+
+    it('sorts the result by username', async () => {
+        mockedProfilesInChannel.mockResolvedValue([member('zeta'), member('alpha')]);
+
+        const members = await fetchAllChannelMembers('ch1');
+
+        expect(members.map((m) => m.username)).toEqual(['alpha', 'zeta']);
+    });
+});
 
 describe('filterMembers', () => {
     it('returns the full list for an empty query', () => {
