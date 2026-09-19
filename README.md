@@ -95,7 +95,7 @@ docker exec local-server-app-1 mmctl --local plugin add /tmp/omt.tar.gz --force
 - `webapp/src/utils/threads.ts` — month pagination via server-side search (`Client4.searchPostsWithParams` with `from/in/after/before` and page-by-page loading of 100 results), per-thread `Client4.getUserThread` requests for counts, and a channel stream fallback scan.
 - `webapp/src/i18n/messages.ts` — RU/EN dictionaries.
 
-See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for the contribution workflow and [CHANGELOG.md](CHANGELOG.md) for the version history.
+See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for the contribution workflow, [CHANGELOG.md](CHANGELOG.md) for the version history, and [docs/api.md](docs/api.md) for the Mattermost APIs the plugin relies on.
 
 ## Limitations
 
