@@ -97,6 +97,7 @@ function monthBounds(monthsBack: number): {after: string; before: string} {
     start.setMonth(start.getMonth() - monthsBack);
     const end = new Date(start);
     end.setMonth(end.getMonth() + 1);
+
     // The search's after: qualifier excludes its own day (it is resolved
     // to the start of the NEXT day server-side), so a month window must
     // start one day earlier to include the 1st of the month.
