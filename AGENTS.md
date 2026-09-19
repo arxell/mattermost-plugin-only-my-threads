@@ -7,6 +7,7 @@
 ## Layout
 
 - `webapp/src/components/rhs.tsx` — the panel: states, month pagination, list, hover toolbar, thread opening, jump to post.
+- `docs/api.md` — every Mattermost API the plugin calls, with the v11.9 semantics and limits verified from the server source (search cap, date-qualifier exclusions, reaction payload shape, per_page clamp). Read before touching the data layer.
 - `webapp/src/utils/threads.ts` — data: month search (`searchPostsWithParams`, pages of 100, up to 10 pages), `getUserThread` for reply counts, channel stream fallback scan.
 - `webapp/src/i18n/messages.ts` — the localization dictionaries (en, ru, fr, de). Keys are `panel.*`; **dictionaries must stay symmetric across all locales** (a unit test enforces this and placeholder parity); any other locale falls back to EN.
 - `webapp/src/index.tsx` — registration: App Bar button, RHS component, reducer, `posted` websocket handler.
