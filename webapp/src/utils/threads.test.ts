@@ -53,7 +53,8 @@ const dateOnlyOf = (ms: number): string => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// Mirrors monthBounds() for the current month, monthsBack months back.
+// Mirrors monthBounds() for the current month, monthsBack months back —
+// including the one-day-earlier after bound that includes the 1st.
 const expectedBounds = (monthsBack: number) => {
     const start = new Date();
     start.setDate(1);
@@ -61,8 +62,10 @@ const expectedBounds = (monthsBack: number) => {
     start.setMonth(start.getMonth() - monthsBack);
     const end = new Date(start);
     end.setMonth(end.getMonth() + 1);
+    const afterStart = new Date(start);
+    afterStart.setDate(afterStart.getDate() - 1);
     const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return {after: fmt(start), before: fmt(end)};
+    return {after: fmt(afterStart), before: fmt(end)};
 };
 
 const PUBLIC_CTX = {channelName: 'team-abc', isPrivateChannel: false, username: 'anton'};
@@ -189,6 +192,24 @@ describe('fetchCurrentMonth (search mode)', () => {
 
         expect(mockedSearch.mock.calls.length).toBeGreaterThanOrEqual(3);
         expect(threads).toHaveLength(102);
+    });
+
+    it('searches from the last day of the previous month to include the 1st', async () => {
+        // The after: qualifier excludes its own day server-side; a month
+        // window must start a day early or posts on the 1st vanish.
+        const first = new Date();
+        first.setDate(1);
+        first.setHours(12, 0, 0, 0);
+        const prev = new Date(first);
+        prev.setDate(0); // the last day of the previous month
+        mockedSearch.mockResolvedValue(searchResponse([makePost('first-day', {create_at: first.getTime()})]));
+        mockedPostsByIds.mockResolvedValue([]);
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+
+        const terms = mockedSearch.mock.calls[0][1].terms as string;
+        expect(terms).toContain('after:' + dateOnlyOf(prev.getTime()));
+        expect(threads[0].id).toBe('first-day');
     });
 
     it('completes the saturated day and hops the window earlier', async () => {

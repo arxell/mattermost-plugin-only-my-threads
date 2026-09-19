@@ -2,6 +2,10 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.14.2] — 2026-09-18
+
+- Fixed: threads created on the 1st of a month never appeared in the panel. The search's `after:` qualifier is resolved server-side to the start of the *next* day (its own day is excluded), so the month window `after:{1st of month}` silently cut the whole first day. The window now starts on the last day of the previous month, which resolves to exactly the 1st 00:00.
+
 ## [0.14.1] — 2026-09-18
 
 - Fixed: the author dropdown listed only the first 200 channel members, so in larger channels some members could not be picked even though their threads existed. All member pages are now loaded sequentially (the endpoint pages reliably and orders by username; a short page ends the walk, 25 pages max as a bound). Members beyond the first 200 appear after a moment.

@@ -97,8 +97,13 @@ function monthBounds(monthsBack: number): {after: string; before: string} {
     start.setMonth(start.getMonth() - monthsBack);
     const end = new Date(start);
     end.setMonth(end.getMonth() + 1);
+    // The search's after: qualifier excludes its own day (it is resolved
+    // to the start of the NEXT day server-side), so a month window must
+    // start one day earlier to include the 1st of the month.
+    const afterStart = new Date(start);
+    afterStart.setDate(afterStart.getDate() - 1);
     const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return {after: fmt(start), before: fmt(end)};
+    return {after: fmt(afterStart), before: fmt(end)};
 }
 
 // The user's own root posts for one month, with reply counts, last-reply
