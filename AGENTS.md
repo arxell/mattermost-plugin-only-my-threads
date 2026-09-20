@@ -27,6 +27,8 @@ cd webapp && npx eslint src --ext .tsx,.ts && ./node_modules/.bin/tsc --noEmit
 make dist           # → dist/only-my-threads-<version>.tar.gz
 ```
 
+`@mattermost/eslint-plugin` is intentionally pinned to the prerelease `1.1.0-0`: as of 2026-09-20 the only published versions are `1.0.0` and `1.1.0-0`, there is no stable 1.1.x. Re-check `npm view @mattermost/eslint-plugin versions` before upgrading.
+
 Install on the local server (docker):
 
 ```bash
