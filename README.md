@@ -6,7 +6,7 @@ A Mattermost plugin that shows **the threads of the current channel that you sta
 
 </div>
 
-![The Only My Threads panel with the Reply/Jump hover toolbar](img/screenshot.png)
+![The Only My Threads panel with the author picker, reactions and the Reply/Jump hover toolbar](docs/screenshot.png)
 
 Based on the official [mattermost-plugin-starter-template](https://github.com/mattermost/mattermost-plugin-starter-template).
 
