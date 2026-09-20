@@ -5,10 +5,10 @@ const config = {
     presets: [
         ['@babel/preset-env', {
             targets: {
-                chrome: 66,
-                firefox: 60,
-                edge: 42,
-                safari: 12,
+                chrome: '114',
+                firefox: '115',
+                edge: '114',
+                safari: '16.4',
             },
             modules: false,
             corejs: 3,
@@ -23,10 +23,8 @@ const config = {
             allExtensions: true,
             isTSX: true,
         }],
-        ['@emotion/babel-preset-css-prop'],
     ],
     plugins: [
-        'babel-plugin-typescript-to-proptypes',
     ],
 };
 
