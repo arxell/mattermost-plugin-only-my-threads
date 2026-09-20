@@ -8,12 +8,12 @@
         "build:watch": "webpack --mode=production --watch",
         "debug": "webpack --mode=none",
         "debug:watch": "webpack --mode=development --watch",
-        "lint": "eslint --ignore-pattern node_modules --ignore-pattern dist --ext=.js,.jsx,tsx,ts . --quiet --cache",
-        "fix": "eslint --ignore-pattern node_modules --ignore-pattern dist --ext=.js,.jsx,tsx,ts . --quiet --fix --cache",
+        "lint": "eslint --ext .ts,.tsx src tests",
+        "fix": "eslint --ext .ts,.tsx src tests --fix",
         "test": "jest --forceExit --detectOpenHandles --verbose",
         "test:watch": "jest --watch",
         "test-ci": "jest --forceExit --detectOpenHandles --maxWorkers=2",
-        "check-types": "tsc"
+        "check-types": "tsc --noEmit"
     },
     "devDependencies": {
         "@babel/cli": "7.25.6",
