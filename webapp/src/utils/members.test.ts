@@ -1,19 +1,22 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
+import {beforeEach, describe, expect, it, vi} from 'vitest';
+import type {Mock} from 'vitest';
+
 import type {UserProfile} from '@mattermost/types/users';
 
 import {Client4} from 'mattermost-redux/client';
 
 import {fetchAllChannelMembers, filterMembers} from './members';
 
-jest.mock('mattermost-redux/client', () => ({
+vi.mock('mattermost-redux/client', () => ({
     Client4: {
-        getProfilesInChannel: jest.fn(),
+        getProfilesInChannel: vi.fn(),
     },
 }));
 
-const mockedProfilesInChannel = Client4.getProfilesInChannel as jest.Mock;
+const mockedProfilesInChannel = Client4.getProfilesInChannel as Mock;
 
 const member = (username: string, overrides: Partial<UserProfile> = {}): UserProfile => ({
     id: username,

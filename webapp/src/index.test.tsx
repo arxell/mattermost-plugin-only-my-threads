@@ -1,46 +1,48 @@
-/**
- * @jest-environment jsdom
- */
+// @vitest-environment jsdom
 
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-// The real client pulls deep exports-only packages that jest cannot
-// resolve; the registration test never calls the API anyway.
-jest.mock('mattermost-redux/client', () => ({Client4: {}}));
-
 import {POSTED_ACTION, REACTION_ACTION, postedReducer} from 'reducer';
+import {beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 
 import ChannelHeaderIcon from 'components/channel_header_icon';
 
 import type {PluginRegistry} from 'types/mattermost-webapp';
 
+// The real client pulls deep exports-only packages that vitest cannot
+// resolve; the registration test never calls the API anyway.
+vi.mock('mattermost-redux/client', () => ({Client4: {}}));
+
 // index.tsx calls window.registerPlugin at import time; stub it first.
-const registerPluginMock = jest.fn<void, [string, unknown]>();
+const registerPluginMock = vi.fn<(id: string, plugin: unknown) => void>();
 (window as unknown as {registerPlugin: unknown}).registerPlugin = registerPluginMock;
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-require('index');
+const registrationCalls: Array<[string, unknown]> = [];
 
-// clearMocks wipes mock.calls before each test, so snapshot the
-// import-time registration while it is still recorded.
-const registrationCalls = registerPluginMock.mock.calls.slice() as Array<[string, unknown]>;
+beforeAll(async () => {
+    await import('index');
+
+    // clearMocks wipes mock.calls before each test, so snapshot the
+    // import-time registration while it is still recorded.
+    registrationCalls.push(...registerPluginMock.mock.calls);
+});
 
 const makeRegistry = () => ({
-    registerRightHandSidebarComponent: jest.fn(() => ({toggleRHSPlugin: {type: 'TOGGLE_RHS'}})),
-    registerChannelHeaderButtonAction: jest.fn(),
-    registerReducer: jest.fn(),
-    registerWebSocketEventHandler: jest.fn(),
+    registerRightHandSidebarComponent: vi.fn(() => ({toggleRHSPlugin: {type: 'TOGGLE_RHS'}})),
+    registerChannelHeaderButtonAction: vi.fn(),
+    registerReducer: vi.fn(),
+    registerWebSocketEventHandler: vi.fn(),
 });
 
 const makeStore = () => ({
-    getState: jest.fn(() => ({
+    getState: vi.fn(() => ({
         entities: {
             users: {currentUserId: 'u1', profiles: {u1: {id: 'u1', locale: 'en'}}},
             preferences: {myPreferences: {}},
         },
     })),
-    dispatch: jest.fn(),
+    dispatch: vi.fn(),
 });
 
 describe('plugin registration', () => {

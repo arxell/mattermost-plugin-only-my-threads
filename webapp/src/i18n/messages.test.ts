@@ -1,6 +1,8 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
+import {describe, expect, it} from 'vitest';
+
 import {messages} from './messages';
 
 const locales = Object.keys(messages) as Array<keyof typeof messages>;

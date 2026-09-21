@@ -2,6 +2,7 @@
 // See LICENSE.txt for license information.
 
 import {POSTED_ACTION, REACTION_ACTION, postedReducer} from 'reducer';
+import {describe, expect, it} from 'vitest';
 
 describe('postedReducer', () => {
     it('starts at zero with no channel or post', () => {

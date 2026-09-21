@@ -1,25 +1,28 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
+import {beforeEach, describe, expect, it, vi} from 'vitest';
+import type {Mock} from 'vitest';
+
 import type {Post} from '@mattermost/types/posts';
 
 import {Client4} from 'mattermost-redux/client';
 
 import {aggregateReactions, fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from './threads';
 
-jest.mock('mattermost-redux/client', () => ({
+vi.mock('mattermost-redux/client', () => ({
     Client4: {
-        searchPostsWithParams: jest.fn(),
-        getPostsByIds: jest.fn(),
-        getPosts: jest.fn(),
-        getReactionsForPost: jest.fn(),
+        searchPostsWithParams: vi.fn(),
+        getPostsByIds: vi.fn(),
+        getPosts: vi.fn(),
+        getReactionsForPost: vi.fn(),
     },
 }));
 
-const mockedSearch = Client4.searchPostsWithParams as jest.Mock;
-const mockedPostsByIds = Client4.getPostsByIds as jest.Mock;
-const mockedGetPosts = Client4.getPosts as jest.Mock;
-const mockedGetReactions = Client4.getReactionsForPost as jest.Mock;
+const mockedSearch = Client4.searchPostsWithParams as Mock;
+const mockedPostsByIds = Client4.getPostsByIds as Mock;
+const mockedGetPosts = Client4.getPosts as Mock;
+const mockedGetReactions = Client4.getReactionsForPost as Mock;
 
 const makePost = (id: string, overrides: Partial<Post> = {}): Post => ({
     id,
