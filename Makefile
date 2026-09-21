@@ -298,7 +298,7 @@ ifneq ($(HAS_SERVER),)
 	$(GOBIN)/gotestsum --format standard-verbose --junitfile report.xml -- ./...
 endif
 ifneq ($(HAS_WEBAPP),)
-	cd webapp && $(NPM) run test;
+	cd webapp && $(NPM) run coverage;
 endif
 
 ## Creates a coverage report for the server code.
@@ -307,6 +307,9 @@ coverage: apply webapp/node_modules
 ifneq ($(HAS_SERVER),)
 	$(GO) test $(GO_TEST_FLAGS) -coverprofile=server/coverage.txt ./server/...
 	$(GO) tool cover -html=server/coverage.txt
+endif
+ifneq ($(HAS_WEBAPP),)
+	cd webapp && $(NPM) run coverage
 endif
 
 ## Disable the plugin.

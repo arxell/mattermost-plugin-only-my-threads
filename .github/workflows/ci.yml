@@ -27,12 +27,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version-file: webapp/.nvmrc
 
       - run: npm ci
         working-directory: webapp
 
-      - run: npx jest --coverage --ci --forceExit --detectOpenHandles
+      - run: npm run coverage
         working-directory: webapp
 
       - name: Build badge JSON

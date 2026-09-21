@@ -2,6 +2,11 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [Unreleased]
+
+- Tests: migrated the webapp test stack from Jest 27 to Vitest 5 (`vitest run`, v8 coverage). All 75 test cases pass unchanged; `npm run coverage` replaces the old `jest --coverage` invocation.
+- Tooling: Node pinned to 24 (`.nvmrc`), TypeScript target ES2022, babel browser targets raised to the Mattermost v11 baseline (Chrome 114 / Firefox 115 / Edge 114 / Safari 16.4), dead dependencies and dead Makefile targets removed, webpack `mode`/`devtool` mixup fixed.
+
 ## [0.14.2] — 2026-09-18
 
 - Fixed: threads created on the 1st of a month never appeared in the panel. The search's `after:` qualifier is resolved server-side to the start of the *next* day (its own day is excluded), so the month window `after:{1st of month}` silently cut the whole first day. The window now starts on the last day of the previous month, which resolves to exactly the 1st 00:00.
