@@ -16,7 +16,7 @@
         "coverage": "vitest run --coverage"
     },
     "devDependencies": {
-        "@babel/cli": "7.25.6",
+        "@babel/cli": "8.0.6",
         "@babel/core": "7.25.2",
         "@babel/preset-env": "7.25.4",
         "@babel/preset-react": "7.24.7",
