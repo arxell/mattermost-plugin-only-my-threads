@@ -22,8 +22,10 @@
 # 1) edit code in webapp/src/*
 # 2) version: bump "version" in plugin.json, then ALWAYS:
 make apply          # regenerates webapp/src/manifest.ts from plugin.json
-# 3) checks (eslint is strict, mattermost config):
-cd webapp && npx eslint src --ext .tsx,.ts && ./node_modules/.bin/tsc --noEmit
+# 3) checks and tests (eslint is strict, mattermost config; tests are vitest):
+make check-style    # eslint + tsc --noEmit
+make test           # vitest run
+make coverage       # vitest run --coverage (v8)
 # 4) build:
 make dist           # → dist/only-my-threads-<version>.tar.gz
 ```
@@ -42,8 +44,8 @@ Local server test accounts: `anton` / `ilya` / `sasha`, password `Passw0rd123!`.
 ## Publishing
 
 - **Every change lands via a separate PR from `main`** (branch off `origin/main`), and every PR records its changes in `CHANGELOG.md`. Direct pushes of feature work to `main` are no longer done (user decision, 2026-09-17).
-- CI runs on every push and pull request (lint/test/build — that is fine).
-- **Tags `v*` and releases — only on the user's explicit request.** Pushing a tag triggers the release job which publishes a GitHub release; the user once asked to revert an unsolicited release.
+- CI runs on every push and pull request via the reusable `mattermost/actions-workflows` plugin-ci workflow (`make check-style` / `make test` / `make dist`) plus a coverage badge job on pushes to `main`.
+- **Tags `v*` and releases — only on the user's explicit request.** Pushing a tag triggers the release job which publishes a GitHub release; the user once asked to revert an unsolicited release. `make patch|minor|major` tag from the protected branch (`main`).
 - Keep the version history in `CHANGELOG.md` (new versions on top).
 
 ## Critical gotchas (learned the hard way)
