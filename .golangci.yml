@@ -61,4 +61,4 @@ formatters:
           replacement: any
     goimports:
       local-prefixes:
-        - github.com/mattermost/mattermost-plugin-starter-template
+        - github.com/arxell/mattermost-plugin-only-my-threads

@@ -3,6 +3,12 @@
   "extends": [
     "plugin:@mattermost/react"
   ],
+  "ignorePatterns": [
+    "node_modules",
+    "webpack.config.js",
+    "dist",
+    "src/manifest.ts"
+  ],
   "rules": {
     "header/header": "off"
   }

@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "esnext",
+    "target": "ES2022",
     "baseUrl": "./src",
     "lib": [
       "dom",
@@ -16,6 +16,7 @@
     "forceConsistentCasingInFileNames": true,
     "module": "commonjs",
     "moduleResolution": "node",
+    "types": [],
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,

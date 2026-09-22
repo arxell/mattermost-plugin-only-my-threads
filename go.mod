@@ -1,4 +1,4 @@
-module github.com/mattermost/mattermost-plugin-starter-template
+module github.com/arxell/mattermost-plugin-only-my-threads
 
 go 1.25
 

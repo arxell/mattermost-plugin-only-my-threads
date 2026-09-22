@@ -6,7 +6,6 @@ GOPATH ?= $(shell go env GOPATH)
 GO_TEST_FLAGS ?= -race
 GO_BUILD_FLAGS ?=
 MM_UTILITIES_DIR ?= ../mattermost-utilities
-DLV_DEBUG_PORT := 2346
 DEFAULT_GOOS := $(shell go env GOOS)
 DEFAULT_GOARCH := $(shell go env GOARCH)
 
@@ -42,7 +41,7 @@ endif
 
 # ====================================================================================
 # Used for semver bumping
-PROTECTED_BRANCH := master
+PROTECTED_BRANCH := main
 APP_NAME    := $(shell basename -s .git `git config --get remote.origin.url`)
 CURRENT_VERSION := $(strip $(shell git describe --abbrev=0 --tags))
 LATEST_RELEASE_TAG_RAW := $(shell git tag -l "v*" --sort=-v:refname | grep -v '\-rc' | head -n 1 || true)
@@ -206,27 +205,6 @@ ifneq ($(HAS_SERVER),)
 	$(GOBIN)/golangci-lint run ./...
 endif
 
-## Builds the server, if it exists, for all supported architectures, unless MM_SERVICESETTINGS_ENABLEDEVELOPER is set.
-.PHONY: server
-server:
-ifneq ($(HAS_SERVER),)
-ifneq ($(MM_DEBUG),)
-	$(info DEBUG mode is on; to disable, unset MM_DEBUG)
-endif
-	rm -rf server/dist;
-	mkdir -p server/dist;
-ifneq ($(MM_SERVICESETTINGS_ENABLEDEVELOPER),)
-	@echo Building plugin only for $(DEFAULT_GOOS)-$(DEFAULT_GOARCH) because MM_SERVICESETTINGS_ENABLEDEVELOPER is enabled
-	cd server && env CGO_ENABLED=0 $(GO) build $(GO_BUILD_FLAGS) $(GO_BUILD_GCFLAGS) -trimpath -o dist/plugin-$(DEFAULT_GOOS)-$(DEFAULT_GOARCH);
-else
-	cd server && env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) $(GO_BUILD_GCFLAGS) -trimpath -o dist/plugin-linux-amd64;
-	cd server && env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) $(GO_BUILD_GCFLAGS) -trimpath -o dist/plugin-linux-arm64;
-	cd server && env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) $(GO_BUILD_GCFLAGS) -trimpath -o dist/plugin-darwin-amd64;
-	cd server && env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) $(GO_BUILD_GCFLAGS) -trimpath -o dist/plugin-darwin-arm64;
-	cd server && env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) $(GO_BUILD_GCFLAGS) -trimpath -o dist/plugin-windows-amd64.exe;
-endif
-endif
-
 ## Ensures NPM dependencies are installed without having to run this all the time.
 webapp/node_modules: $(wildcard webapp/package.json)
 ifneq ($(HAS_WEBAPP),)
@@ -266,7 +244,8 @@ ifneq ($(HAS_WEBAPP),)
 	cp -r webapp/dist dist/$(PLUGIN_ID)/webapp/
 endif
 ifeq ($(shell uname),Darwin)
-	cd dist && tar --disable-copyfile -cvzf $(BUNDLE_NAME) $(PLUGIN_ID)
+	# ustar format: Mattermost's extractor rejects the pax archives macOS bsdtar writes by default
+	cd dist && COPYFILE_DISABLE=1 tar --format=ustar -czf $(BUNDLE_NAME) $(PLUGIN_ID)
 else
 	cd dist && tar -cvzf $(BUNDLE_NAME) $(PLUGIN_ID)
 endif
@@ -275,7 +254,7 @@ endif
 
 ## Builds and bundles the plugin.
 .PHONY: dist
-dist: apply server webapp bundle
+dist: apply webapp bundle
 ifeq ($(PLUGIN_ID),com.mattermost.plugin-starter-template)
 	$(warning WARNING)
 	$(warning You are building with the default plugin ID "com.mattermost.plugin-starter-template".)
@@ -289,7 +268,7 @@ deploy: dist
 
 ## Builds and installs the plugin to a server, updating the webapp automatically when changed.
 .PHONY: watch
-watch: apply server bundle
+watch: apply bundle
 ifeq ($(MM_DEBUG),)
 	cd webapp && $(NPM) run build:watch
 else
@@ -300,46 +279,6 @@ endif
 .PHONY: deploy-from-watch
 deploy-from-watch: bundle
 	./build/bin/pluginctl deploy $(PLUGIN_ID) dist/$(BUNDLE_NAME)
-
-## Setup dlv for attaching, identifying the plugin PID for other targets.
-.PHONY: setup-attach
-setup-attach:
-	$(eval PLUGIN_PID := $(shell ps aux | grep "plugins/${PLUGIN_ID}" | grep -v "grep" | awk -F " " '{print $$2}'))
-	$(eval NUM_PID := $(shell echo -n ${PLUGIN_PID} | wc -w))
-
-	@if [ ${NUM_PID} -gt 2 ]; then \
-		echo "** There is more than 1 plugin process running. Run 'make kill reset' to restart just one."; \
-		exit 1; \
-	fi
-
-## Check if setup-attach succeeded.
-.PHONY: check-attach
-check-attach:
-	@if [ -z ${PLUGIN_PID} ]; then \
-		echo "Could not find plugin PID; the plugin is not running. Exiting."; \
-		exit 1; \
-	else \
-		echo "Located Plugin running with PID: ${PLUGIN_PID}"; \
-	fi
-
-## Attach dlv to an existing plugin instance.
-.PHONY: attach
-attach: setup-attach check-attach
-	dlv attach ${PLUGIN_PID}
-
-## Attach dlv to an existing plugin instance, exposing a headless instance on $DLV_DEBUG_PORT.
-.PHONY: attach-headless
-attach-headless: setup-attach check-attach
-	dlv attach ${PLUGIN_PID} --listen :$(DLV_DEBUG_PORT) --headless=true --api-version=2 --accept-multiclient
-
-## Detach dlv from an existing plugin instance, if previously attached.
-.PHONY: detach
-detach: setup-attach
-	@DELVE_PID=$(shell ps aux | grep "dlv attach ${PLUGIN_PID}" | grep -v "grep" | awk -F " " '{print $$2}') && \
-	if [ "$$DELVE_PID" -gt 0 ] > /dev/null 2>&1 ; then \
-		echo "Located existing delve process running with PID: $$DELVE_PID. Killing." ; \
-		kill -9 $$DELVE_PID ; \
-	fi
 
 ## Runs any lints and unit tests defined for the server and webapp, if they exist.
 .PHONY: test
@@ -359,7 +298,7 @@ ifneq ($(HAS_SERVER),)
 	$(GOBIN)/gotestsum --format standard-verbose --junitfile report.xml -- ./...
 endif
 ifneq ($(HAS_WEBAPP),)
-	cd webapp && $(NPM) run test;
+	cd webapp && $(NPM) run coverage;
 endif
 
 ## Creates a coverage report for the server code.
@@ -369,21 +308,13 @@ ifneq ($(HAS_SERVER),)
 	$(GO) test $(GO_TEST_FLAGS) -coverprofile=server/coverage.txt ./server/...
 	$(GO) tool cover -html=server/coverage.txt
 endif
-
-## Extract strings for translation from the source code.
-.PHONY: i18n-extract
-i18n-extract:
 ifneq ($(HAS_WEBAPP),)
-ifeq ($(HAS_MM_UTILITIES),)
-	@echo "You must clone github.com/mattermost/mattermost-utilities repo in .. to use this command"
-else
-	cd $(MM_UTILITIES_DIR) && npm install && npm run babel && node mmjstool/build/index.js i18n extract-webapp --webapp-dir $(PWD)/webapp
-endif
+	cd webapp && $(NPM) run coverage
 endif
 
 ## Disable the plugin.
 .PHONY: disable
-disable: detach
+disable:
 	./build/bin/pluginctl disable $(PLUGIN_ID)
 
 ## Enable the plugin.
@@ -393,12 +324,12 @@ enable:
 
 ## Reset the plugin, effectively disabling and re-enabling it on the server.
 .PHONY: reset
-reset: detach
+reset:
 	./build/bin/pluginctl reset $(PLUGIN_ID)
 
-## Kill all instances of the plugin, detaching any existing dlv instance.
+## Kill all instances of the plugin.
 .PHONY: kill
-kill: detach
+kill:
 	$(eval PLUGIN_PID := $(shell ps aux | grep "plugins/${PLUGIN_ID}" | grep -v "grep" | awk -F " " '{print $$2}'))
 
 	@for PID in ${PLUGIN_PID}; do \
@@ -433,8 +364,3 @@ logs-watch:
 help:
 	@cat Makefile build/*.mk | grep -v '\.PHONY' |  grep -v '\help:' | grep -B1 -E '^[a-zA-Z0-9_.-]+:.*' | sed -e "s/:.*//" | sed -e "s/^## //" |  grep -v '\-\-' | sed '1!G;h;$$!d' | awk 'NR%2{printf "\033[36m%-30s\033[0m",$$0;next;}1' | sort
 
-mock:
-ifneq ($(HAS_SERVER),)
-	go install go.uber.org/mock/mockgen@v0.6.0
-	mockgen -destination=server/command/mocks/mock_commands.go -package=mocks github.com/mattermost/mattermost-plugin-starter-template/server/command Command
-endif

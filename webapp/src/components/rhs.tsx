@@ -1,127 +1,36 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
+import {PLUGIN_STATE_KEY, REFRESH_DELAY_MS} from 'constants';
+
 import {useTranslation} from 'i18n';
 import React, {useEffect, useRef, useState} from 'react';
-import {useSelector, useStore} from 'react-redux';
-import {formatPanelDate} from 'utils/dates';
-import {fetchAllChannelMembers, filterMembers} from 'utils/members';
+import {useSelector} from 'react-redux';
+import type {PostedState} from 'reducer';
+import {monthLabel} from 'utils/dates';
+import {fetchAllChannelMembers} from 'utils/members';
 import type {MyThread, ReactionSummary, SearchContext} from 'utils/threads';
-import {aggregateReactions, fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from 'utils/threads';
+import {fetchCurrentMonth, fetchOlderMonth} from 'utils/threads';
 
 import type {GlobalState} from '@mattermost/types/store';
 import type {UserProfile} from '@mattermost/types/users';
 
-import {receivedPosts, receivedPostsInThread} from 'mattermost-redux/actions/posts';
-import {Client4} from 'mattermost-redux/client';
 import {getCurrentChannel} from 'mattermost-redux/selectors/entities/channels';
 import {getTheme} from 'mattermost-redux/selectors/entities/preferences';
 import {getCurrentTeam} from 'mattermost-redux/selectors/entities/teams';
 import {getCurrentUser, getCurrentUserId} from 'mattermost-redux/selectors/entities/users';
 
-import EmojiFace, {PICKER_EMOJIS} from 'components/emoji_face';
+import AuthorPicker from 'components/AuthorPicker';
+import {FALLBACK_ERROR, FALLBACK_LINK, FALLBACK_TEXT, ITEM_TOOLBAR_CSS, styles, withAlpha} from 'components/styles';
+import ThreadList from 'components/ThreadList';
+import type {PanelColors} from 'components/types';
+import {useThreadActions} from 'components/useThreadActions';
 
-const PLUGIN_STATE_KEY = 'plugins-only-my-threads';
-const REFRESH_DELAY_MS = 400;
-
-// Hover toolbar styles for list items, kept close to the host's Saved
-// Messages actions. Inline styles cannot express :hover, so a prefixed
-// stylesheet is injected once with the panel.
-const ITEM_TOOLBAR_CSS = `
-.omt-item { position: relative; }
-.omt-toolbar {
-    position: absolute;
-    right: 12px;
-    bottom: 6px;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 2px;
-    border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 120ms ease;
-    z-index: 5;
-}
-.omt-item:hover .omt-toolbar { opacity: 1; visibility: visible; }
-.omt-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    border: 0;
-    background: transparent;
-    border-radius: 4px;
-    padding: 4px 8px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 400;
-    color: inherit;
-    font-family: inherit;
-}
-.omt-btn:hover { background: var(--omt-hover); }
-.omt-btn:focus { outline: 1px solid rgba(0, 0, 0, 0.2); }
-.omt-picker {
-    position: absolute;
-    right: 12px;
-    bottom: 34px;
-    display: grid;
-    grid-template-columns: repeat(6, auto);
-    gap: 2px;
-    padding: 6px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-    z-index: 10;
-}
-.omt-emoji {
-    border: 0;
-    background: transparent;
-    border-radius: 4px;
-    padding: 4px;
-    font-size: 16px;
-    line-height: 1;
-    cursor: pointer;
-    font-family: inherit;
-}
-.omt-emoji:hover { background: var(--omt-hover); }
-.omt-menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
-    z-index: 20;
-    display: flex;
-    flex-direction: column;
-    min-width: 180px;
-    max-height: 280px;
-    overflow-y: auto;
-    padding: 4px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-}
-.omt-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: 0;
-    background: transparent;
-    padding: 6px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    color: inherit;
-    font-family: inherit;
-    text-align: left;
-}
-.omt-menu-item:hover { background: var(--omt-hover); }
-`;
-
-// Fallback colors used when the theme is not (yet) available in the store.
-const FALLBACK_TEXT = '#1f4157';
-const FALLBACK_LINK = '#166de0';
-const FALLBACK_ERROR = '#d24b4e';
+// The plugin reducer lives outside the typed GlobalState; narrow it.
+type PluginStoreState = GlobalState & { [PLUGIN_STATE_KEY]?: Partial<PostedState> };
 
 const getPostedSeq = (state: GlobalState): number => {
-    const pluginState = (state as unknown as Record<string, {seq?: number; channelId?: string | null}>)[PLUGIN_STATE_KEY];
+    const pluginState = (state as PluginStoreState)[PLUGIN_STATE_KEY];
     const currentChannelId = state.entities.channels.currentChannelId;
     if (!pluginState || pluginState.channelId !== currentChannelId) {
         return 0;
@@ -129,37 +38,14 @@ const getPostedSeq = (state: GlobalState): number => {
     return pluginState.seq ?? 0;
 };
 
-const getReactionSeq = (state: GlobalState): number => {
-    const pluginState = (state as unknown as Record<string, {reactionSeq?: number}>)[PLUGIN_STATE_KEY];
-    return pluginState?.reactionSeq ?? 0;
-};
+const getReactionSeq = (state: GlobalState): number =>
+    (state as PluginStoreState)[PLUGIN_STATE_KEY]?.reactionSeq ?? 0;
 
-const getReactionPostId = (state: GlobalState): string | null => {
-    const pluginState = (state as unknown as Record<string, {reactionPostId?: string | null}>)[PLUGIN_STATE_KEY];
-    return pluginState?.reactionPostId ?? null;
-};
-
-function withAlpha(color: string | undefined, alpha: number, fallback = FALLBACK_TEXT): string {
-    const clean = (color || fallback).replace('#', '');
-    if (clean.length !== 6) {
-        return color || fallback;
-    }
-    const r = parseInt(clean.slice(0, 2), 16);
-    const g = parseInt(clean.slice(2, 4), 16);
-    const b = parseInt(clean.slice(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function monthLabel(monthsBack: number, locale: string): string {
-    const d = new Date();
-    d.setDate(1);
-    d.setMonth(d.getMonth() - monthsBack);
-    return d.toLocaleString(locale, {month: 'long', year: 'numeric'});
-}
+const getReactionPostId = (state: GlobalState): string | null =>
+    (state as PluginStoreState)[PLUGIN_STATE_KEY]?.reactionPostId ?? null;
 
 export default function OnlyMyThreadsRHS(): JSX.Element {
     const {locale, t} = useTranslation();
-    const store = useStore();
     const channel = useSelector((state: GlobalState) => getCurrentChannel(state));
     const userId = useSelector((state: GlobalState) => getCurrentUserId(state));
     const team = useSelector((state: GlobalState) => getCurrentTeam(state));
@@ -185,29 +71,9 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const [manualRefresh, setManualRefresh] = useState(0);
 
     // Whose threads the list shows: the current user by default, or any
-    // channel member picked in the header dropdown (a custom menu —
-    // native <option>s cannot render member avatars).
+    // channel member picked in the header dropdown.
     const [authorId, setAuthorId] = useState<string | null>(null);
     const [members, setMembers] = useState<UserProfile[]>([]);
-    const [authorMenuOpen, setAuthorMenuOpen] = useState(false);
-    const [authorQuery, setAuthorQuery] = useState('');
-    const authorMenuRef = useRef<HTMLDivElement | null>(null);
-
-    // Closes the author menu on any click outside of it.
-    useEffect(() => {
-        if (!authorMenuOpen) {
-            return undefined;
-        }
-        const onDocMouseDown = (e: MouseEvent) => {
-            if (authorMenuRef.current && e.target instanceof Node && !authorMenuRef.current.contains(e.target)) {
-                setAuthorMenuOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', onDocMouseDown);
-        return () => {
-            document.removeEventListener('mousedown', onDocMouseDown);
-        };
-    }, [authorMenuOpen]);
 
     // Live reaction chips, overriding the month-fetch data. Keyed by root
     // post id; refreshed after panel toggles and reaction websocket events.
@@ -222,18 +88,33 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const teamName = team?.name;
 
     const centerColor = theme.centerChannelColor || FALLBACK_TEXT;
-    const linkColor = theme.linkColor || FALLBACK_LINK;
-    const errorColor = theme.errorTextColor || FALLBACK_ERROR;
-    const secondaryColor = withAlpha(centerColor, 0.6);
-    const toolbarBg = theme.centerChannelBg || '#ffffff';
+    const colors: PanelColors = {
+        centerColor,
+        linkColor: theme.linkColor || FALLBACK_LINK,
+        errorColor: theme.errorTextColor || FALLBACK_ERROR,
+        secondaryColor: withAlpha(centerColor, 0.6),
+        toolbarBg: theme.centerChannelBg || '#ffffff',
+    };
 
-    // Switching the channel resets pagination and the author choice.
-    useEffect(() => {
+    const {openThread, jumpToPost, toggleReaction, refetchReactions} = useThreadActions({
+        userId,
+        teamName,
+        reactionsByPost,
+        setReactionsByPost,
+    });
+
+    // Resets pagination, author choice and reaction overrides.
+    const resetList = () => {
         setMonths(null);
         oldestLoadedBack.current = 0;
         setNoMoreMonths(false);
         setReactionsByPost({});
         setPickerFor(null);
+    };
+
+    // Switching the channel resets pagination and the author choice.
+    useEffect(() => {
+        resetList();
         setAuthorId(null);
 
         // The host store does not guarantee profiles of the current
@@ -256,7 +137,6 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     }, [channelId]);
 
     const authorProfile = authorId ? members.find((m) => m.id === authorId) : null;
-    const authorMatches = filterMembers(members, authorQuery);
     const authorUsername = authorProfile?.username || username || '';
     const searchContext: SearchContext = {
         channelName: channelName || '',
@@ -321,18 +201,9 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         };
     }, [channelId, channelName, isPrivateChannel, authorId, userId, teamId, postedSeq, manualRefresh]);
 
-    const refetchReactions = async (postId: string) => {
-        try {
-            const list = await Client4.getReactionsForPost(postId);
-            setReactionsByPost((prev) => ({...prev, [postId]: aggregateReactions(list, userId || '')}));
-        } catch {
-            // Keep the previously rendered chips.
-        }
-    };
-
     // Reaction websocket events refresh the chips of the affected thread.
     useEffect(() => {
-        if (reactionPostId && reactionSeq > 0 && (months || []).some((m) => m.some((t) => t.id === reactionPostId))) {
+        if (reactionPostId && reactionSeq > 0 && (months || []).some((m) => m.some((thread) => thread.id === reactionPostId))) {
             refetchReactions(reactionPostId);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -340,7 +211,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
 
     if (!channel) {
         return (
-            <div style={{padding: '16px'}}>
+            <div style={styles.stateMessage}>
                 {t('panel.channelNotSelected')}
             </div>
         );
@@ -373,458 +244,39 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         });
     };
 
-    // Jumps to the post in the channel (permalink navigation): the host
-    // scrolls the channel to it and highlights it.
-    const jumpToPost = (thread: MyThread) => {
-        if (!teamName) {
-            return;
-        }
-        const url = `/${teamName}/pl/${thread.id}`;
-        try {
-            window.history.pushState({}, '', url);
-            window.dispatchEvent(new PopStateEvent('popstate', {state: window.history.state}));
-        } catch (e) {
-            window.location.assign(url);
-        }
+    const togglePicker = (threadId: string) => {
+        setPickerFor(pickerFor === threadId ? null : threadId);
     };
 
-    const reactionsFor = (thread: MyThread): ReactionSummary[] =>
-        reactionsByPost[thread.id] ?? thread.reactions;
-
-    // Adds or removes the user's reaction, then refreshes that post's chips.
-    const toggleReaction = async (thread: MyThread, emojiName: string) => {
-        if (!userId) {
-            return;
-        }
-        const alreadyMine = reactionsFor(thread).some((s) => s.emojiName === emojiName && s.mine);
-        try {
-            if (alreadyMine) {
-                await Client4.removeReaction(userId, thread.id, emojiName);
-            } else {
-                await Client4.addReaction(userId, thread.id, emojiName);
-            }
-        } catch {
-            return;
-        }
-        await refetchReactions(thread.id);
+    const selectAuthor = (id: string | null) => {
+        setAuthorId(id);
+        resetList();
     };
-
-    // Opens the thread in the right-hand sidebar with its reply composer,
-    // like the host's own Saved Messages panel does. The raw post is put
-    // into the store first so old threads render without extra fetching.
-    const openThread = (thread: MyThread) => {
-        try {
-            store.dispatch(receivedPosts({order: [thread.post.id], posts: {[thread.post.id]: thread.post}, next_post_id: '', prev_post_id: ''} as never));
-            store.dispatch({
-                type: 'SELECT_POST',
-                postId: thread.id,
-                channelId: thread.channelId,
-                timestamp: Date.now(),
-            });
-
-            // The host thread view's virtual list sometimes measures its
-            // container as zero-sized right after the panel swap and renders
-            // empty. A resize nudge forces the re-measure.
-            [50, 300].forEach((delay) => setTimeout(() => {
-                window.dispatchEvent(new Event('resize'));
-            }, delay));
-
-            // Preload the full thread so the reply composer shows up at once;
-            // the host would fetch it on its own, just slower. Thread views
-            // read posts from the dedicated "in thread" store section.
-            Client4.getPostThread(thread.id).then((list) => {
-                store.dispatch(receivedPostsInThread(list, thread.id));
-            }).catch(() => {
-                // The host will fetch the thread itself.
-            });
-        } catch (e) {
-            if (teamName) {
-                window.location.assign(`/${teamName}/pl/${thread.id}`);
-            }
-        }
-    };
-
-    const formatDateTime = (ms: number): string => formatPanelDate(ms, locale);
 
     const items = (months || []).flat();
 
-    let body: JSX.Element;
-    if (loading && months === null) {
-        body = (
-            <div style={{padding: '16px', color: secondaryColor}}>{t('panel.loading')}</div>
-        );
-    } else if (error) {
-        body = (
-            <div style={{padding: '16px'}}>
-                <div style={{color: errorColor, marginBottom: '8px'}}>
-                    {t('panel.loadError', {message: error})}
-                </div>
-                <button
-                    className={'btn btn-tertiary'}
-                    onClick={() => setManualRefresh((n) => n + 1)}
-                >
-                    {t('panel.retry')}
-                </button>
-            </div>
-        );
-    } else if (items.length === 0) {
-        body = (
-            <div style={{padding: '16px', color: secondaryColor}}>
-                {t('panel.emptyMonth')}
-            </div>
-        );
-    } else {
-        body = (
-            <div>
-                {items.map((thread) => (
-                    <div
-                        key={thread.id}
-                        className={'omt-item'}
-                        role={'button'}
-                        tabIndex={0}
-                        onClick={() => openThread(thread)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                openThread(thread);
-                            }
-                        }}
-                        style={{
-                            padding: '6px 16px 4px',
-                            borderBottom: `1px solid ${withAlpha(centerColor, 0.1)}`,
-                            cursor: 'pointer',
-                            color: centerColor,
-                        }}
-                    >
-                        <div style={{fontSize: '15px', lineHeight: '1.45', marginBottom: '2px'}}>
-                            {messageToSnippet(thread.message, {
-                                codeLabel: t('snippet.code'),
-                                imageLabel: t('snippet.image'),
-                            })}
-                        </div>
-                        {reactionsFor(thread).length > 0 ? (
-                            <div style={{display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '4px'}}>
-                                {reactionsFor(thread).map((summary) => (
-                                    <button
-                                        key={summary.emojiName}
-                                        className={'omt-chip'}
-                                        title={`:${summary.emojiName}:`}
-                                        style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            borderRadius: '10px',
-                                            padding: '1px 8px',
-                                            fontSize: '12px',
-                                            lineHeight: '1.5',
-                                            cursor: 'pointer',
-                                            color: centerColor,
-                                            fontFamily: 'inherit',
-                                            border: `1px solid ${summary.mine ? linkColor : withAlpha(centerColor, 0.25)}`,
-                                            background: summary.mine ? withAlpha(linkColor, 0.1) : 'transparent',
-                                        }}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleReaction(thread, summary.emojiName);
-                                        }}
-                                    >
-                                        <EmojiFace name={summary.emojiName}/>
-                                        {summary.count > 1 ? summary.count : ''}
-                                    </button>
-                                ))}
-                                <button
-                                    className={'omt-chip'}
-                                    title={t('panel.addReaction')}
-                                    style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        borderRadius: '10px',
-                                        padding: '1px 8px',
-                                        fontSize: '12px',
-                                        lineHeight: '1.5',
-                                        cursor: 'pointer',
-                                        color: secondaryColor,
-                                        fontFamily: 'inherit',
-                                        border: `1px dashed ${withAlpha(centerColor, 0.3)}`,
-                                        background: 'transparent',
-                                    }}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setPickerFor(pickerFor === thread.id ? null : thread.id);
-                                    }}
-                                >
-                                    {'+'}
-                                </button>
-                            </div>
-                        ) : null}
-                        {pickerFor === thread.id ? (
-                            <div
-                                className={'omt-picker'}
-                                style={{
-                                    background: toolbarBg,
-                                    border: `1px solid ${withAlpha(centerColor, 0.15)}`,
-                                    '--omt-hover': withAlpha(centerColor, 0.08),
-                                } as React.CSSProperties}
-                            >
-                                {PICKER_EMOJIS.map(([name, char]) => (
-                                    <button
-                                        key={name}
-                                        className={'omt-emoji'}
-                                        title={`:${name}:`}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setPickerFor(null);
-                                            toggleReaction(thread, name);
-                                        }}
-                                    >
-                                        {char}
-                                    </button>
-                                ))}
-                            </div>
-                        ) : null}
-                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                            <span style={{fontSize: '12px', color: secondaryColor}}>
-                                {t('panel.createdLabel')}
-                                {' '}
-                                {formatDateTime(thread.createAt)}
-                            </span>
-                            {thread.awaitingReply ? (
-                                <span
-                                    style={{fontSize: '12px', color: secondaryColor}}
-                                    title={t('panel.awaiting')}
-                                >
-                                    {'⏳'}
-                                </span>
-                            ) : (
-                                <span style={{fontSize: '13px', color: linkColor}}>
-                                    {'💬 '}
-                                    {thread.replyCount}
-                                </span>
-                            )}
-                        </div>
-                        <div
-                            className={'omt-toolbar'}
-                            style={{
-                                background: toolbarBg,
-                                border: `1px solid ${withAlpha(centerColor, 0.15)}`,
-                                '--omt-hover': withAlpha(centerColor, 0.08),
-                            } as React.CSSProperties}
-                        >
-                            {/* A focused element removed on unmount breaks the
-                                host thread view's virtual list sizing, so the
-                                toolbar buttons never take focus on click. */}
-                            <button
-                                className={'omt-btn'}
-                                title={t('panel.addReaction')}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPickerFor(pickerFor === thread.id ? null : thread.id);
-                                }}
-                            >
-                                <svg
-                                    width={'13'}
-                                    height={'13'}
-                                    viewBox={'0 0 24 24'}
-                                    fill={'currentColor'}
-                                    aria-hidden={true}
-                                >
-                                    <path d={'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM12 18c-2.28 0-4.22-1.4-5-3.38.42-.72 1.4-1.02 2.2-.6l1.2.63c.98.52 2.14.52 3.12 0l1.2-.63c.8-.42 1.78-.12 2.2.6C16.22 16.6 14.28 18 12 18z'}/>
-                                </svg>
-                            </button>
-                            <button
-                                className={'omt-btn'}
-                                title={t('panel.reply')}
-                                onMouseDown={(e) => e.preventDefault()}
-                            >
-                                <svg
-                                    width={'13'}
-                                    height={'13'}
-                                    viewBox={'0 0 24 24'}
-                                    fill={'currentColor'}
-                                    aria-hidden={true}
-                                >
-                                    <path d={'M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z'}/>
-                                </svg>
-                                {t('panel.reply')}
-                            </button>
-                            <button
-                                className={'omt-btn'}
-                                title={t('panel.jump')}
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    jumpToPost(thread);
-                                }}
-                            >
-                                {t('panel.jump')}
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        );
-    }
-
-    // Rendered for both the empty and non-empty cases: an empty current
-    // month must still allow paging to the previous ones.
-    const showMoreButton = !noMoreMonths && months !== null ? (
-        <button
-            className={'btn btn-tertiary'}
-            style={{display: 'block', width: '100%', padding: '10px 16px', border: '0', cursor: 'pointer'}}
-            disabled={loadingOlder}
-            onClick={loadOlder}
-        >
-            {loadingOlder ? t('panel.loading') : t('panel.showMore', {month: monthLabel(oldestLoadedBack.current + 1, locale)})}
-        </button>
-    ) : null;
-
     return (
-        <div style={{height: '100%', overflowY: 'auto'}}>
+        <div style={styles.panel}>
             <style>{ITEM_TOOLBAR_CSS}</style>
             <div
                 style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '6px 16px',
+                    ...styles.header,
                     borderBottom: `1px solid ${withAlpha(centerColor, 0.15)}`,
                 }}
             >
-                <div style={{display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0}}>
-                    <div style={{fontWeight: 600, fontSize: '14px', color: centerColor, whiteSpace: 'nowrap'}}>
+                <div style={styles.headerTitleWrap}>
+                    <div style={{...styles.headerTitle, color: centerColor}}>
                         {channel.display_name}
                         {items.length > 0 ? ` · ${items.length}` : ''}
                     </div>
                 </div>
-                <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                    {/* Whose threads the list shows: the signed-in user by
-                        default, or a channel member picked from the list.
-                        The person glyph marks that a member filter is on. */}
-                    {authorId ? (
-                        <svg
-                            width={'14'}
-                            height={'14'}
-                            viewBox={'0 0 24 24'}
-                            fill={'currentColor'}
-                            aria-hidden={true}
-                            style={{color: secondaryColor, flexShrink: 0}}
-                        >
-                            <path d={'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'}/>
-                        </svg>
-                    ) : null}
-                    <div
-                        ref={authorMenuRef}
-                        style={{position: 'relative'}}
-                    >
-                        <button
-                            className={'btn btn-tertiary'}
-                            onClick={() => {
-                                setAuthorMenuOpen((open) => {
-                                    if (!open) {
-                                        setAuthorQuery('');
-                                    }
-                                    return !open;
-                                });
-                            }}
-                            title={t('panel.authorFilter')}
-                            aria-label={t('panel.authorFilter')}
-                            aria-expanded={authorMenuOpen}
-                            style={{fontSize: '12px', padding: '2px 6px', maxWidth: '140px', whiteSpace: 'nowrap'}}
-                        >
-                            {authorProfile ? authorProfile.username : t('panel.authorFilter')}
-                            {' ▾'}
-                        </button>
-                        {authorMenuOpen ? (
-                            <div
-                                className={'omt-menu'}
-                                style={{
-                                    background: toolbarBg,
-                                    border: `1px solid ${withAlpha(centerColor, 0.15)}`,
-                                    '--omt-hover': withAlpha(centerColor, 0.08),
-                                    color: centerColor,
-                                } as React.CSSProperties}
-                            >
-                                <button
-                                    className={'omt-menu-item'}
-                                    onClick={() => {
-                                        setAuthorMenuOpen(false);
-                                        setAuthorId(null);
-                                        setMonths(null);
-                                        oldestLoadedBack.current = 0;
-                                        setNoMoreMonths(false);
-                                        setReactionsByPost({});
-                                        setPickerFor(null);
-                                    }}
-                                >
-                                    <svg
-                                        width={'16'}
-                                        height={'16'}
-                                        viewBox={'0 0 24 24'}
-                                        fill={'currentColor'}
-                                        aria-hidden={true}
-                                        style={{color: secondaryColor, flexShrink: 0}}
-                                    >
-                                        <path d={'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'}/>
-                                    </svg>
-                                    {t('panel.authorFilter')}
-                                </button>
-                                <input
-                                    type={'text'}
-                                    className={'form-control'}
-                                    value={authorQuery}
-                                    autoFocus={true}
-                                    placeholder={t('panel.authorSearch')}
-                                    aria-label={t('panel.authorSearch')}
-                                    onChange={(e) => setAuthorQuery(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Escape') {
-                                            setAuthorMenuOpen(false);
-                                        } else if (e.key === 'Enter' && authorMatches.length > 0) {
-                                            const pick = authorMatches[0];
-                                            setAuthorMenuOpen(false);
-                                            setAuthorId(pick.id);
-                                            setMonths(null);
-                                            oldestLoadedBack.current = 0;
-                                            setNoMoreMonths(false);
-                                            setReactionsByPost({});
-                                            setPickerFor(null);
-                                        }
-                                    }}
-                                    style={{fontSize: '13px', padding: '4px 8px', marginBottom: '4px'}}
-                                />
-                                {authorMatches.length === 0 ? (
-                                    <div style={{padding: '6px 8px', fontSize: '12px', color: secondaryColor}}>
-                                        {t('panel.noMatch')}
-                                    </div>
-                                ) : null}
-                                {authorMatches.map((m) => (
-                                    <button
-                                        key={m.id}
-                                        className={'omt-menu-item'}
-                                        onClick={() => {
-                                            setAuthorMenuOpen(false);
-                                            setAuthorId(m.id);
-                                            setMonths(null);
-                                            oldestLoadedBack.current = 0;
-                                            setNoMoreMonths(false);
-                                            setReactionsByPost({});
-                                            setPickerFor(null);
-                                        }}
-                                        style={m.id === authorId ? {background: withAlpha(linkColor, 0.1)} : undefined}
-                                    >
-                                        <img
-                                            src={Client4.getProfilePictureUrl(m.id, m.last_picture_update)}
-                                            alt={''}
-                                            width={18}
-                                            height={18}
-                                            style={{borderRadius: '50%', flexShrink: 0}}
-                                        />
-                                        {m.username}
-                                    </button>
-                                ))}
-                            </div>
-                        ) : null}
-                    </div>
+                <div style={styles.headerActions}>
+                    <AuthorPicker
+                        members={members}
+                        authorId={authorId}
+                        colors={colors}
+                        onSelect={selectAuthor}
+                    />
                     <button
                         className={'btn btn-tertiary'}
                         onClick={() => setManualRefresh((n) => n + 1)}
@@ -843,18 +295,23 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                     </button>
                 </div>
             </div>
-            {loading && months !== null ? (
-                <div style={{padding: '8px 16px', color: secondaryColor, fontSize: '12px'}}>
-                    {t('panel.refreshing')}
-                </div>
-            ) : null}
-            {body}
-            {showMoreButton}
-            {noMoreMonths && months !== null && !loading ? (
-                <div style={{padding: '8px 16px 12px', fontSize: '11px', color: secondaryColor}}>
-                    {t('panel.noMore')}
-                </div>
-            ) : null}
+            <ThreadList
+                months={months}
+                loading={loading}
+                loadingOlder={loadingOlder}
+                error={error}
+                noMoreMonths={noMoreMonths}
+                nextMonthLabel={monthLabel(oldestLoadedBack.current + 1, locale)}
+                reactionsByPost={reactionsByPost}
+                pickerFor={pickerFor}
+                colors={colors}
+                onRetry={() => setManualRefresh((n) => n + 1)}
+                onLoadOlder={loadOlder}
+                onOpenThread={openThread}
+                onJumpToPost={jumpToPost}
+                onToggleReaction={toggleReaction}
+                onTogglePicker={togglePicker}
+            />
         </div>
     );
 }

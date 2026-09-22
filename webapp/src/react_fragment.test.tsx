@@ -2,6 +2,7 @@
 // See LICENSE.txt for license information.
 
 import React from 'react';
+import {expect, test} from 'vitest';
 
 function generateSomething() {
     return <div>{'something'}</div>;

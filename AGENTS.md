@@ -6,7 +6,8 @@
 
 ## Layout
 
-- `webapp/src/components/rhs.tsx` — the panel: states, month pagination, list, hover toolbar, thread opening, jump to post.
+- `webapp/src/components/rhs.tsx` — the panel composition: store selectors, month/author/reaction state, fetch effects, the header. The parts live next to it: `ThreadRow.tsx` (one thread row with the hover toolbar), `ReactionChips.tsx` (chips + emoji picker), `AuthorPicker.tsx` (member dropdown), `ThreadList.tsx` (states, rows, month pagination), `useThreadActions.ts` (openThread/jumpToPost/toggleReaction), `styles.ts` (`ITEM_TOOLBAR_CSS`, fallback colors, `withAlpha`, the static style map), `types.ts` (`PanelColors`).
+- `webapp/src/constants.ts` — all numeric limits and delays (SEARCH_LIMIT, POST_BATCH, CHANNEL_SCAN_WINDOW, MAX_EMPTY_MONTHS, THREAD_OPEN_RESIZE_DELAYS_MS, …) with their rationale.
 - `docs/api.md` — every Mattermost API the plugin calls, with the v11.9 semantics and limits verified from the server source (search cap, date-qualifier exclusions, reaction payload shape, per_page clamp). Read before touching the data layer.
 - `webapp/src/utils/threads.ts` — data: month search (`searchPostsWithParams`, pages of 100, up to 10 pages), `getUserThread` for reply counts, channel stream fallback scan.
 - `webapp/src/i18n/messages.ts` — the localization dictionaries (en, ru, fr, de). Keys are `panel.*`; **dictionaries must stay symmetric across all locales** (a unit test enforces this and placeholder parity); any other locale falls back to EN.
@@ -21,11 +22,15 @@
 # 1) edit code in webapp/src/*
 # 2) version: bump "version" in plugin.json, then ALWAYS:
 make apply          # regenerates webapp/src/manifest.ts from plugin.json
-# 3) checks (eslint is strict, mattermost config):
-cd webapp && npx eslint src --ext .tsx,.ts && ./node_modules/.bin/tsc --noEmit
+# 3) checks and tests (eslint is strict, mattermost config; tests are vitest):
+make check-style    # eslint + tsc --noEmit
+make test           # vitest run
+make coverage       # vitest run --coverage (v8)
 # 4) build:
 make dist           # → dist/only-my-threads-<version>.tar.gz
 ```
+
+`@mattermost/eslint-plugin` is intentionally pinned to the prerelease `1.1.0-0`: as of 2026-09-20 the only published versions are `1.0.0` and `1.1.0-0`, there is no stable 1.1.x. Re-check `npm view @mattermost/eslint-plugin versions` before upgrading.
 
 Install on the local server (docker):
 
@@ -39,16 +44,16 @@ Local server test accounts: `anton` / `ilya` / `sasha`, password `Passw0rd123!`.
 ## Publishing
 
 - **Every change lands via a separate PR from `main`** (branch off `origin/main`), and every PR records its changes in `CHANGELOG.md`. Direct pushes of feature work to `main` are no longer done (user decision, 2026-09-17).
-- CI runs on every push and pull request (lint/test/build — that is fine).
-- **Tags `v*` and releases — only on the user's explicit request.** Pushing a tag triggers the release job which publishes a GitHub release; the user once asked to revert an unsolicited release.
+- CI runs on every push and pull request via the reusable `mattermost/actions-workflows` plugin-ci workflow (`make check-style` / `make test` / `make dist`) plus a coverage badge job on pushes to `main`.
+- **Tags `v*` and releases — only on the user's explicit request.** Pushing a tag triggers the release job which publishes a GitHub release; the user once asked to revert an unsolicited release. `make patch|minor|major` tag from the protected branch (`main`).
 - Keep the version history in `CHANGELOG.md` (new versions on top).
 
 ## Critical gotchas (learned the hard way)
 
 1. **RHS component**: `registerRightHandSidebarComponent` takes the component TYPE, not a JSX element — otherwise React #130 and the whole app unmounts.
 2. **Opening a thread**: dispatch the raw action `{type: 'SELECT_POST', postId, channelId, timestamp}`. Do NOT use `UPDATE_RHS_STATE` — it clears `selectedPostId`. Dispatch `receivedPosts` before it, and preload `getPostThread` → `receivedPostsInThread` after.
-3. **Host virtual list race**: right after `SELECT_POST` the thread's virtual list sometimes measures its container as zero-sized and renders an empty thread. `openThread` already dispatches `window.dispatchEvent(new Event('resize'))` with 50/300 ms delays — do not remove that.
-4. **Hover toolbar** (`.omt-toolbar`, styles injected via a `<style>` tag with the `omt-` prefix): inline styles cannot express `:hover`. The toolbar buttons MUST have `onMouseDown={(e) => e.preventDefault()}` — focus on an element removed when the panel unmounts breaks the virtual list sizing (empty thread). The Reply button does NOT call `stopPropagation`: its click bubbles to the row, which opens the thread. Only the Jump button has `stopPropagation`.
+3. **Host virtual list race**: right after `SELECT_POST` the thread's virtual list sometimes measures its container as zero-sized and renders an empty thread. `openThread` (in `useThreadActions.ts`) dispatches `window.dispatchEvent(new Event('resize'))` with the delays from `THREAD_OPEN_RESIZE_DELAYS_MS` (50/300 ms, `constants.ts`) — do not remove that.
+4. **Hover toolbar** (`.omt-toolbar`, styles injected via a `<style>` tag with the `omt-` prefix from `components/styles.ts` `ITEM_TOOLBAR_CSS`): inline styles cannot express `:hover`. The toolbar buttons MUST have `onMouseDown={(e) => e.preventDefault()}` — focus on an element removed when the panel unmounts breaks the virtual list sizing (empty thread). The Reply button does NOT call `stopPropagation`: its click bubbles to the row, which opens the thread. Only the Jump button has `stopPropagation`.
 5. **The toolbar is invisible without hover**: `visibility: hidden` is skipped by hit-testing — a synthetic `.click()` on the button without a real hover passes through. In browser tests, `hover` the row first, then click.
 6. **CSRF**: any in-page POST (e.g. a login) without the `X-CSRF-Token` header from the `MMCSRFTOKEN` cookie returns 401 AND revokes the current session (you will have to log in again). GET with the `X-Requested-With: XMLHttpRequest` header is safe.
 7. **Search**: the backend caps results at ~100 matches and lies about further pages (page 1 comes back empty even when more exist). Never rely on `page`. The date qualifiers both EXCLUDE their own days (UTC): `after:D before:D+1` matches nothing; a single day is addressed by `after:D-1 before:D+1`. When a window saturates, re-fetch the oldest fetched day bracketed like that, then continue the month with `before:{that day}` (`fetchMonthThreads` does this).

@@ -12,3 +12,11 @@ export function formatPanelDate(ms: number, locale: string): string {
     const time = d.toLocaleString(locale, {hour: '2-digit', minute: '2-digit'});
     return `${dd}.${mm}.${yy}, ${time}`;
 }
+
+// The "Show more" label: the localized name of the month N months back.
+export function monthLabel(monthsBack: number, locale: string): string {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - monthsBack);
+    return d.toLocaleString(locale, {month: 'long', year: 'numeric'});
+}

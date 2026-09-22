@@ -1,23 +1,22 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-/**
- * @jest-environment node
- */
+import {beforeEach, describe, expect, it, vi} from 'vitest';
+import type {Mock} from 'vitest';
 
 import {Client4} from 'mattermost-redux/client';
 
 import {PICKER_EMOJIS, resolveEmojiSrc} from './emoji_face';
 
-jest.mock('mattermost-redux/client', () => ({
+vi.mock('mattermost-redux/client', () => ({
     Client4: {
-        getCustomEmojiByName: jest.fn(),
-        getCustomEmojiImageUrl: jest.fn((id: string) => `/api/v4/emoji/${id}/image`),
-        getSystemEmojiImageUrl: jest.fn((name: string) => `/api/v4/emoji/${name}/image`),
+        getCustomEmojiByName: vi.fn(),
+        getCustomEmojiImageUrl: vi.fn((id: string) => `/api/v4/emoji/${id}/image`),
+        getSystemEmojiImageUrl: vi.fn((name: string) => `/api/v4/emoji/${name}/image`),
     },
 }));
 
-const mockedCustomByName = Client4.getCustomEmojiByName as jest.Mock;
+const mockedCustomByName = Client4.getCustomEmojiByName as Mock;
 
 describe('resolveEmojiSrc', () => {
     beforeEach(() => {

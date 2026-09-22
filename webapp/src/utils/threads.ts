@@ -1,6 +1,17 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
+import {
+    CHANNEL_SCAN_PAGE_SIZE,
+    CHANNEL_SCAN_WINDOW,
+    DAY_MS,
+    MAX_EMPTY_MONTHS,
+    MAX_SEARCH_HOPS,
+    POST_BATCH,
+    SEARCH_LIMIT,
+    SEARCH_SATURATION_MIN,
+} from 'constants';
+
 import type {Post} from '@mattermost/types/posts';
 import type {Reaction} from '@mattermost/types/reactions';
 
@@ -54,36 +65,14 @@ export interface SearchContext {
     username: string;
 }
 
-// Fallback scan parameters for servers without search.
-const FALLBACK_SCAN_WINDOW = 1000;
-const FALLBACK_PAGE_SIZE = 100;
-
-// When paging to older months, silently skip up to this many empty months.
-const MAX_EMPTY_MONTHS_TO_SKIP = 24;
-
-// The search backend (DB and Bleve alike on v11) never returns more
-// than ~100 matches and reports no further pages even when more exist,
-// silently dropping everything older than the newest 100. Month data is
-// therefore fetched in day-granularity windows: when a window saturates,
-// its end moves to the day of the oldest fetched post and the rest of
-// the month continues from there.
-const SEARCH_WINDOW_CAP = 100;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-// Some v11 backends (observed on Bleve-backed installs) truncate the
-// result one short of the requested per_page, so saturation is detected
-// with a one-post margin: a month genuinely holding 99 posts only costs
-// a couple of extra day-window requests, all deduplicated.
-const SEARCH_SATURATION_MIN = SEARCH_WINDOW_CAP - 1;
-const MAX_SEARCH_HOPS = 40;
+// The numeric limits (SEARCH_LIMIT, SEARCH_SATURATION_MIN, MAX_SEARCH_HOPS,
+// POST_BATCH, CHANNEL_SCAN_*, MAX_EMPTY_MONTHS, DAY_MS) live in constants.ts;
+// their rationale comments moved there with them.
 
 function dateOnly(ms: number): string {
     const d = new Date(ms);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-
-// POST /posts/ids is capped server-side; larger root lists go in chunks.
-const BATCH_POSTS_SIZE = 200;
 
 function sortThreads(threads: MyThread[]): MyThread[] {
     threads.sort((a, b) => b.createAt - a.createAt);
@@ -117,7 +106,7 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
     const channelTerm = (ctx.isPrivateChannel ? '~' : '') + ctx.channelName;
 
     // Windowed fetching instead of server paging: a saturated window
-    // (exactly SEARCH_WINDOW_CAP results) means the backend truncated the
+    // (exactly SEARCH_LIMIT results) means the backend truncated the
     // older matches. The oldest fetched day D is re-fetched as its own day
     // window first (before: would exclude D entirely, eating D's tail),
     // then the month continues with before:D. Day granularity: a single
@@ -130,8 +119,8 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
             terms,
             is_or_search: false,
             page: 0,
-            per_page: SEARCH_WINDOW_CAP,
-        } as never);
+            per_page: SEARCH_LIMIT,
+        });
         return (results.order).
             map((id: string) => (results.posts ? results.posts[id] : undefined)).
             filter((post?: Post) => Boolean(post)) as Post[];
@@ -176,8 +165,8 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
     // One batch request carries the authoritative reply counts and the
     // reactions of every root; chunked because the server caps the id list.
     const batched = new Map<string, Post>();
-    for (let i = 0; i < roots.length; i += BATCH_POSTS_SIZE) {
-        const chunk = roots.slice(i, i + BATCH_POSTS_SIZE).map((root) => root.id);
+    for (let i = 0; i < roots.length; i += POST_BATCH) {
+        const chunk = roots.slice(i, i + POST_BATCH).map((root) => root.id);
 
         // Chunks are small and independent; a failed one only costs its own
         // threads' counts (they fall back to the search-derived data).
@@ -225,10 +214,10 @@ export interface OlderMonthPage {
     monthsBack: number;
 }
 
-// Pages one month further back, skipping up to MAX_EMPTY_MONTHS_TO_SKIP
+// Pages one month further back, skipping up to MAX_EMPTY_MONTHS
 // empty months. Resolves to null when there is nothing more to show.
 export async function fetchOlderMonth(userId: string, teamId: string, ctx: SearchContext, startMonthsBack: number): Promise<OlderMonthPage | null> {
-    for (let back = startMonthsBack; back < startMonthsBack + MAX_EMPTY_MONTHS_TO_SKIP; back++) {
+    for (let back = startMonthsBack; back < startMonthsBack + MAX_EMPTY_MONTHS; back++) {
         // Sequential by nature: each month is only fetched when needed.
         // eslint-disable-next-line no-await-in-loop
         const threads = await fetchMonthThreads(userId, teamId, ctx, back);
@@ -245,10 +234,10 @@ async function fetchAllByScan(channelId: string, userId: string): Promise<MyThre
     const posts = new Map<string, Post>();
     let scanned = 0;
 
-    for (let page = 0; scanned < FALLBACK_SCAN_WINDOW; page++) {
+    for (let page = 0; scanned < CHANNEL_SCAN_WINDOW; page++) {
         // Pages must be fetched sequentially to stop as soon as the channel end is reached.
         // eslint-disable-next-line no-await-in-loop
-        const list = await Client4.getPosts(channelId, page, FALLBACK_PAGE_SIZE);
+        const list = await Client4.getPosts(channelId, page, CHANNEL_SCAN_PAGE_SIZE);
         for (const id of list.order) {
             const post = list.posts ? list.posts[id] : undefined;
             if (post) {
@@ -256,7 +245,7 @@ async function fetchAllByScan(channelId: string, userId: string): Promise<MyThre
             }
         }
         scanned += list.order.length;
-        if (list.order.length < FALLBACK_PAGE_SIZE) {
+        if (list.order.length < CHANNEL_SCAN_PAGE_SIZE) {
             break;
         }
     }
