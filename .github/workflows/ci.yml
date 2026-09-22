@@ -2,7 +2,6 @@ name: ci
 on:
   push:
     branches:
-      - master
       - main
     tags:
       - "v*"
@@ -10,10 +9,15 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
+  # The reusable workflow runs make check-style / make test / make dist;
+  # each of those targets depends on `apply`, which generates
+  # webapp/src/manifest.ts from plugin.json before tsc/vitest/webpack run.
   plugin-ci:
+    permissions:
+      contents: read
+      id-token: write
     uses: mattermost/actions-workflows/.github/workflows/plugin-ci.yml@main
     secrets: inherit
 
@@ -28,30 +32,32 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: webapp/.nvmrc
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
 
       - run: npm ci
         working-directory: webapp
 
-      - run: npm run coverage
-        working-directory: webapp
+      - run: make coverage
 
       - name: Build badge JSON
-        run: >
-          node -e "const s=require('./webapp/coverage/coverage-summary.json');const pct=s.total.lines.pct;
-          const color=pct>=80?'brightgreen':pct>=60?'yellow':'red';
-          require('fs').writeFileSync('coverage-badge.json',JSON.stringify({schemaVersion:1,label:'coverage',message:pct+'%',color})+'\n');"
+        run: |
+          pct=$(node -p "require('./webapp/coverage/coverage-summary.json').total.lines.pct")
+          color=$(node -p "$pct >= 80 ? 'green' : ($pct >= 60 ? 'yellow' : 'red')")
+          node -e "const fs=require('fs'); fs.writeFileSync('coverage-badge.json', JSON.stringify({schemaVersion:1,label:'coverage',message:process.argv[1]+'%',color:process.argv[2]}))" "$pct" "$color"
           cat coverage-badge.json
 
       - name: Publish badge branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin coverage-badge || true
           git checkout -B coverage-badge
           git add coverage-badge.json
           git commit -m "Update coverage badge [skip ci]" || exit 0
           # The badge commit is not part of main's history, so the branch
           # is rewritten on every run.
-          git push --force origin coverage-badge
+          git push --force-with-lease origin HEAD:coverage-badge
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -60,6 +66,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download plugin bundle
         uses: actions/download-artifact@v4
         with:
@@ -68,7 +76,7 @@ jobs:
 
       # download-artifact v4 nests a single artifact's files one level
       # deeper than expected on some runner versions; flatten so the
-      # release step always finds the tarball next to release-notes.md.
+      # release step always finds the tarball at the top of dist/.
       - name: Flatten the bundle directory
         run: |
           find dist -mindepth 2 -type f -exec mv -n {} dist/ \;
@@ -78,4 +86,4 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz --title "$GITHUB_REF_NAME" --generate-notes --repo "$GITHUB_REPOSITORY"
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes dist/*.tar.gz

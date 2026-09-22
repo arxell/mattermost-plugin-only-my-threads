@@ -9,3 +9,4 @@ server/dist/
 .DS_Store
 local-server/
 webapp/coverage/
+coverage-badge.json
