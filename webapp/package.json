@@ -51,7 +51,7 @@
         "core-js": "3.50.0",
         "mattermost-redux": "11.1.0",
         "react": "18.2.0",
-        "react-redux": "9.2.0",
+        "react-redux": "9.3.0",
         "redux": "5.0.1"
     }
 }
