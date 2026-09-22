@@ -2,7 +2,7 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
-## [Unreleased]
+## [0.15.0] — 2026-09-22
 
 - Tests: migrated the webapp test stack from Jest 27 to Vitest 5 (`vitest run`, v8 coverage). All 75 test cases pass unchanged; `npm run coverage` replaces the old `jest --coverage` invocation.
 - Refactor: the 860-line `rhs.tsx` god component was split into `ThreadRow`, `ReactionChips`, `AuthorPicker`, `ThreadList`, `useThreadActions`, `styles.ts` (`ITEM_TOOLBAR_CSS`, theme helpers) and `types.ts`, with the numeric limits extracted to `src/constants.ts`. No behavior change.
