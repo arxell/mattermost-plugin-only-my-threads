@@ -10,6 +10,7 @@ export default defineConfig({
             // Jest resolved these through moduleDirectories: ["src"]; the
             // webpack build does the same via resolve.modules.
             components: src('components'),
+            constants: src('constants.ts'),
             i18n: src('i18n'),
             types: src('types'),
             utils: src('utils'),
