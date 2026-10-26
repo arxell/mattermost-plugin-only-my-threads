@@ -8,7 +8,8 @@ import type {Post} from '@mattermost/types/posts';
 
 import {Client4} from 'mattermost-redux/client';
 
-import {aggregateReactions, fetchCurrentMonth, fetchOlderMonth, messageToSnippet} from './threads';
+import {aggregateReactions, fetchCurrentMonth, fetchOlderMonth, mentionsUser, messageToSnippet} from './threads';
+import type {SearchContext} from './threads';
 
 vi.mock('mattermost-redux/client', () => ({
     Client4: {
@@ -71,7 +72,7 @@ const expectedBounds = (monthsBack: number) => {
     return {after: fmt(afterStart), before: fmt(end)};
 };
 
-const PUBLIC_CTX = {channelName: 'team-abc', isPrivateChannel: false, username: 'anton'};
+const PUBLIC_CTX: SearchContext = {channelName: 'team-abc', isPrivateChannel: false, people: [{id: 'u1', username: 'anton'}]};
 
 describe('messageToSnippet', () => {
     it('replaces fenced code blocks with the label', () => {
@@ -411,6 +412,185 @@ describe('fetchCurrentMonth (search mode)', () => {
         expect(threads.map((t) => t.id)).toEqual(['awaiting', 'answered']);
         expect(threads[0]).toMatchObject({replyCount: 0, awaitingReply: true, createAt: 400});
         expect(threads[1]).toMatchObject({replyCount: 2, awaitingReply: false, createAt: 100});
+    });
+});
+
+describe('mentionsUser', () => {
+    it('matches explicit mentions, case-insensitively and before punctuation', () => {
+        expect(mentionsUser('@anton look', 'anton')).toBe(true);
+        expect(mentionsUser('ping @Anton, please', 'anton')).toBe(true);
+        expect(mentionsUser('thanks @anton.', 'anton')).toBe(true);
+        expect(mentionsUser('(@anton)', 'anton')).toBe(true);
+    });
+
+    it('ignores bare words, emails and longer usernames', () => {
+        expect(mentionsUser('anton said hi', 'anton')).toBe(false);
+        expect(mentionsUser('mail a@anton.dev', 'anton')).toBe(false);
+        expect(mentionsUser('@anton.k and @antonio', 'anton')).toBe(false);
+        expect(mentionsUser('@anton-bot', 'anton')).toBe(false);
+        expect(mentionsUser('@anton', '')).toBe(false);
+    });
+
+    it('escapes regex characters of dotted usernames', () => {
+        expect(mentionsUser('@ivan.petrov hi', 'ivan.petrov')).toBe(true);
+        expect(mentionsUser('@ivanXpetrov hi', 'ivan.petrov')).toBe(false);
+    });
+});
+
+describe('fetchCurrentMonth (mentioned mode)', () => {
+    const CTX: SearchContext = {...PUBLIC_CTX, includeOwn: false, includeMentions: true};
+
+    beforeEach(() => {
+        mockedSearch.mockReset();
+        mockedPostsByIds.mockReset().mockResolvedValue([]);
+        mockedGetPosts.mockReset();
+    });
+
+    it('runs only the mention search over the month window', async () => {
+        mockedSearch.mockResolvedValue(searchResponse([]));
+
+        await fetchCurrentMonth('u1', 't1', 'ch1', CTX);
+
+        const {after, before} = expectedBounds(0);
+        expect(mockedSearch).toHaveBeenCalledTimes(1);
+        expect(mockedSearch.mock.calls[0][1].terms).toBe(`in:team-abc @anton after:${after} before:${before}`);
+    });
+
+    it('does not search mentions in the default mode', async () => {
+        mockedSearch.mockResolvedValue(searchResponse([]));
+
+        await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+
+        expect(mockedSearch).toHaveBeenCalledTimes(1);
+        expect(mockedSearch.mock.calls[0][1].terms).toContain('from:anton');
+    });
+
+    it('lists one row per mentioned thread, the root of a mentioning reply included', async () => {
+        const mentionedRoot = makePost('m-root', {user_id: 'u2', message: 'hey @anton', create_at: 200});
+        const reply = makePost('m-reply', {user_id: 'u2', root_id: 'far-root', message: '@anton check', create_at: 300});
+        const replyAgain = makePost('m-reply-2', {user_id: 'u3', root_id: 'far-root', message: 'ping @anton', create_at: 350});
+        const inOwnThread = makePost('own-reply', {user_id: 'u2', root_id: 'own-root', message: 'cc @anton', create_at: 400});
+        const bareWord = makePost('bare', {user_id: 'u2', message: 'anton said so', create_at: 500});
+        const selfMention = makePost('self', {user_id: 'u1', message: 'note to @anton', create_at: 600});
+        mockedSearch.mockResolvedValue(searchResponse([mentionedRoot, reply, replyAgain, inOwnThread, bareWord, selfMention]));
+        const farRoot = makePost('far-root', {user_id: 'u3', create_at: 10, reply_count: 4});
+        const ownRoot = makePost('own-root', {user_id: 'u1', create_at: 20, reply_count: 1});
+        mockedPostsByIds.mockImplementation(async (ids: string[]) =>
+            ids.map((id) => ({'far-root': farRoot, 'own-root': ownRoot} as Record<string, Post>)[id] ?? {id, reply_count: 0}));
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', CTX);
+
+        expect(mockedPostsByIds).toHaveBeenCalledTimes(1);
+        expect([...mockedPostsByIds.mock.calls[0][0]].sort()).toEqual(['far-root', 'm-root', 'own-root']);
+
+        // Sorted by the newest mention: 400 in the user's own thread (a
+        // mention by someone else counts there too), 350 in the far
+        // thread, 200 in the mentioned root itself. The bare word and the
+        // self-mention bring nothing.
+        expect(threads.map((t) => t.id)).toEqual(['own-root', 'far-root', 'm-root']);
+        expect(threads[1]).toMatchObject({createAt: 10, replyCount: 4, message: farRoot.message});
+        expect(threads[1].post).toBe(farRoot);
+    });
+
+    it('skips a mentioning reply whose root the batch did not return', async () => {
+        const reply = makePost('orphan', {user_id: 'u2', root_id: 'gone-root', message: '@anton', create_at: 300});
+        mockedSearch.mockResolvedValue(searchResponse([reply]));
+        mockedPostsByIds.mockResolvedValue([]);
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', CTX);
+
+        expect(threads).toEqual([]);
+    });
+
+    it('lists only mentioned threads in the channel-scan fallback', async () => {
+        mockedSearch.mockRejectedValue(new Error('search disabled'));
+        const mine = makePost('my-root', {user_id: 'u1', create_at: 100});
+        const other = makePost('other-root', {user_id: 'u2', create_at: 90});
+        const mentioning = makePost('ping', {user_id: 'u2', root_id: 'other-root', message: '@anton?', create_at: 200});
+        const selfMention = makePost('self-root', {user_id: 'u1', message: '@anton todo', create_at: 70});
+        const unrelated = makePost('quiet-root', {user_id: 'u2', create_at: 80});
+        mockedGetPosts.mockResolvedValue(searchResponse([mine, other, mentioning, selfMention, unrelated]));
+
+        const own = await fetchCurrentMonth('u1', 't1', 'ch1', PUBLIC_CTX);
+        expect(own.map((t) => t.id)).toEqual(['my-root', 'self-root']);
+
+        const mentioned = await fetchCurrentMonth('u1', 't1', 'ch1', CTX);
+        expect(mentioned.map((t) => t.id)).toEqual(['other-root']);
+        expect(mentioned[0]).toMatchObject({replyCount: 1});
+    });
+});
+
+describe('fetchCurrentMonth (all modes, several people)', () => {
+    const ILYA = {id: 'u2', username: 'ilya'};
+
+    // Routes the mocked search by its filter term.
+    const routeSearch = (own: Post[], mentioning: Post[]) => {
+        mockedSearch.mockImplementation((_teamId: string, params: {terms: string}) =>
+            Promise.resolve(searchResponse(params.terms.includes('from:') ? own : mentioning)));
+    };
+
+    beforeEach(() => {
+        mockedSearch.mockReset();
+        mockedPostsByIds.mockReset().mockResolvedValue([]);
+        mockedGetPosts.mockReset();
+    });
+
+    it('merges own roots with mentioned threads, sorted by the newest activity', async () => {
+        const own = makePost('own', {create_at: 100});
+        const mentionedRoot = makePost('m-root', {user_id: 'u2', message: 'hey @anton', create_at: 200});
+        const ownMentioned = makePost('own-again', {user_id: 'u2', root_id: 'own', message: 'cc @anton', create_at: 400});
+        routeSearch([own], [mentionedRoot, ownMentioned]);
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', {...PUBLIC_CTX, includeMentions: true});
+
+        const terms = mockedSearch.mock.calls.map((call) => call[1].terms as string);
+        expect(terms.some((term) => term.includes('from:anton'))).toBe(true);
+        expect(terms.some((term) => term.includes('@anton'))).toBe(true);
+
+        // The own root got a mention at 400, after the mentioned root (200).
+        expect(threads.map((t) => t.id)).toEqual(['own', 'm-root']);
+    });
+
+    it('searches several people in one request per source, the mention one as OR', async () => {
+        routeSearch([], []);
+
+        await fetchCurrentMonth('u1', 't1', 'ch1', {...PUBLIC_CTX, people: [...PUBLIC_CTX.people, ILYA], includeMentions: true});
+
+        const {after, before} = expectedBounds(0);
+        const calls = mockedSearch.mock.calls.map((call) => call[1]).
+            sort((a, b) => a.terms.localeCompare(b.terms));
+        expect(calls.map((params) => [params.terms, params.is_or_search])).toEqual([
+            [`in:team-abc @anton @ilya after:${after} before:${before}`, true],
+            [`in:team-abc from:anton from:ilya after:${after} before:${before}`, false],
+        ]);
+    });
+
+    it('counts a mention of any picked person except by that person', async () => {
+        const antonPingsIlya = makePost('a-to-i', {user_id: 'u1', message: '@ilya look', create_at: 300});
+        const ilyaSelf = makePost('i-self', {user_id: 'u2', message: 'note @ilya', create_at: 200});
+        const sashaPingsAnton = makePost('s-to-a', {user_id: 'u3', message: '@anton?', create_at: 100});
+        routeSearch([], [antonPingsIlya, ilyaSelf, sashaPingsAnton]);
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', {
+            ...PUBLIC_CTX,
+            people: [...PUBLIC_CTX.people, ILYA],
+            includeOwn: false,
+            includeMentions: true,
+        });
+
+        expect(threads.map((t) => t.id)).toEqual(['a-to-i', 's-to-a']);
+    });
+
+    it('scans own roots of every picked person in the fallback', async () => {
+        mockedSearch.mockRejectedValue(new Error('search disabled'));
+        const mine = makePost('my-root', {user_id: 'u1', create_at: 100});
+        const ilyas = makePost('ilya-root', {user_id: 'u2', create_at: 90});
+        const sashas = makePost('sasha-root', {user_id: 'u3', create_at: 80});
+        mockedGetPosts.mockResolvedValue(searchResponse([mine, ilyas, sashas]));
+
+        const threads = await fetchCurrentMonth('u1', 't1', 'ch1', {...PUBLIC_CTX, people: [...PUBLIC_CTX.people, ILYA]});
+
+        expect(threads.map((t) => t.id)).toEqual(['my-root', 'ilya-root']);
     });
 });
 

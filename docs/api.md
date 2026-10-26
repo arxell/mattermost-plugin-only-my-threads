@@ -46,7 +46,22 @@ where `terms` is `in:{channel} from:{username} after:{A} before:{B}`
   is lost (boundary posts land in the adjacent month's window), but the
   month attribution of posts near midnight can shift for non-UTC users.
 
-**How the plugin uses it** (`utils/threads.ts fetchMonthThreads`):
+**Several people.** Every `from:` flag is appended to `FromUsers`, which
+the store turns into `Username IN (…)` — so `from:a from:b` is one
+request for any number of picked people, without `is_or_search`.
+
+**Mentions (Mode "Mentioned" / "All").** A second month search uses
+`in:{channel} @{a} @{b} after:{A} before:{B}`, with `is_or_search: true`
+when more than one person is picked: `OrTerms` only joins the text terms
+with `|`, the `in:`/date filters stay AND-ed.
+`@` is not a search operator: it is not in `specialSearchChars`, goes into
+`to_tsquery` as is, and the default text-search parser drops it — so the
+query matches the **bare word** `username` too. The plugin re-checks every
+result for an explicit mention client-side (`mentionsUser`) and ignores a
+person mentioning themself. Roots of mentioning replies are loaded by the
+same `POST /posts/ids` batch.
+
+**How the plugin uses it** (`utils/threads.ts searchMonthPosts`):
 windowed fetching — a saturated window (99+ results) re-fetches its oldest
 day with the bracket window above and continues with `before:{oldest day}`,
 deduplicating by post id. Known limitation: a single day holding >100 of

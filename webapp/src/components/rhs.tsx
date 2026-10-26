@@ -9,7 +9,7 @@ import {useSelector} from 'react-redux';
 import type {PostedState} from 'reducer';
 import {monthLabel} from 'utils/dates';
 import {fetchAllChannelMembers} from 'utils/members';
-import type {MyThread, ReactionSummary, SearchContext} from 'utils/threads';
+import type {MyThread, ReactionSummary, SearchContext, ThreadPerson} from 'utils/threads';
 import {fetchCurrentMonth, fetchOlderMonth} from 'utils/threads';
 
 import type {GlobalState} from '@mattermost/types/store';
@@ -21,9 +21,11 @@ import {getCurrentTeam} from 'mattermost-redux/selectors/entities/teams';
 import {getCurrentUser, getCurrentUserId} from 'mattermost-redux/selectors/entities/users';
 
 import AuthorPicker from 'components/AuthorPicker';
+import ModePicker from 'components/ModePicker';
 import {FALLBACK_ERROR, FALLBACK_LINK, FALLBACK_TEXT, ITEM_TOOLBAR_CSS, styles, withAlpha} from 'components/styles';
 import ThreadList from 'components/ThreadList';
-import type {PanelColors} from 'components/types';
+import {ALL_MODES} from 'components/types';
+import type {PanelColors, ThreadModes} from 'components/types';
 import {useThreadActions} from 'components/useThreadActions';
 
 // The plugin reducer lives outside the typed GlobalState; narrow it.
@@ -71,8 +73,12 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const [manualRefresh, setManualRefresh] = useState(0);
 
     // Whose threads the list shows: the current user by default, or any
-    // channel member picked in the header dropdown.
-    const [authorId, setAuthorId] = useState<string | null>(null);
+    // channel member picked in the header dropdown. Whose threads: "Me" by
+    // default, or any channel members (null means just the current user;
+    // reset on channel switch). Which threads: the Mode dropdown, "All" by
+    // default; it survives channel switches.
+    const [peopleIds, setPeopleIds] = useState<string[] | null>(null);
+    const [modes, setModes] = useState<ThreadModes>(ALL_MODES);
     const [members, setMembers] = useState<UserProfile[]>([]);
 
     // Live reaction chips, overriding the month-fetch data. Keyed by root
@@ -112,10 +118,10 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         setPickerFor(null);
     };
 
-    // Switching the channel resets pagination and the author choice.
+    // Switching the channel resets pagination and the people choice.
     useEffect(() => {
         resetList();
-        setAuthorId(null);
+        setPeopleIds(null);
 
         // The host store does not guarantee profiles of the current
         // channel's members; fetch all pages of them for the author
@@ -127,7 +133,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                     setMembers(profiles);
                 }
             }).catch(() => {
-                // The dropdown just stays with the "My threads" option.
+                // The dropdown just stays with the current user's options.
             });
             return () => {
                 cancelled = true;
@@ -136,16 +142,31 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         return undefined;
     }, [channelId]);
 
-    const authorProfile = authorId ? members.find((m) => m.id === authorId) : null;
-    const authorUsername = authorProfile?.username || username || '';
+    // Picked members whose profiles are not loaded yet are left out until
+    // the member list arrives (it re-triggers the fetch below).
+    const selectedIds = peopleIds ?? (userId ? [userId] : []);
+    const people: ThreadPerson[] = [];
+    for (const id of selectedIds) {
+        const name = id === userId ? username : members.find((m) => m.id === id)?.username;
+        if (name) {
+            people.push({id, username: name});
+        }
+    }
+    const peopleKey = people.map((person) => person.username).join(' ');
     const searchContext: SearchContext = {
         channelName: channelName || '',
         isPrivateChannel,
-        username: authorUsername,
+        people,
+        includeOwn: modes.own,
+        includeMentions: modes.mentioned,
     };
 
     useEffect(() => {
-        if (!channelId || !userId || !teamId) {
+        if (!channelId || !userId || !teamId || !peopleKey) {
+            // Nobody picked (or profiles not loaded yet): nothing to fetch,
+            // and a fetch cancelled by this change must not leave the
+            // panel stuck in loading.
+            setLoading(false);
             return undefined;
         }
 
@@ -159,11 +180,17 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                     return;
                 }
 
+                const freshIds = new Set(result.map((thread) => thread.id));
+
                 // Replace only the current month; keep already loaded older
-                // months (they are historical and never change).
+                // months (they are historical and never change). A thread
+                // of an older month can still move up here — a fresh
+                // mention, when mentions are listed — so it leaves its
+                // old month instead of showing twice.
                 setMonths((prev) => {
                     oldestLoadedBack.current = Math.max(oldestLoadedBack.current, 0);
-                    return [result, ...(prev ? prev.slice(1) : [])];
+                    const older = (prev ? prev.slice(1) : []).map((month) => month.filter((thread) => !freshIds.has(thread.id)));
+                    return [result, ...older];
                 });
 
                 // The fresh month carries the server's current reactions,
@@ -172,7 +199,6 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                 // showing chips as they were when the panel last toggled
                 // them. Overrides of other months' threads stay.
                 setReactionsByPost((prev) => {
-                    const freshIds = new Set(result.map((thread) => thread.id));
                     const next: Record<string, ReactionSummary[]> = {};
                     for (const [postId, summaries] of Object.entries(prev)) {
                         if (!freshIds.has(postId)) {
@@ -199,7 +225,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [channelId, channelName, isPrivateChannel, authorId, userId, teamId, postedSeq, manualRefresh]);
+    }, [channelId, channelName, isPrivateChannel, peopleKey, modes.own, modes.mentioned, userId, teamId, postedSeq, manualRefresh]);
 
     // Reaction websocket events refresh the chips of the affected thread.
     useEffect(() => {
@@ -248,8 +274,13 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         setPickerFor(pickerFor === threadId ? null : threadId);
     };
 
-    const selectAuthor = (id: string | null) => {
-        setAuthorId(id);
+    const selectPeople = (ids: string[]) => {
+        setPeopleIds(ids);
+        resetList();
+    };
+
+    const selectModes = (next: ThreadModes) => {
+        setModes(next);
         resetList();
     };
 
@@ -265,17 +296,26 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                 }}
             >
                 <div style={styles.headerTitleWrap}>
-                    <div style={{...styles.headerTitle, color: centerColor}}>
+                    <div
+                        style={{...styles.headerTitle, color: centerColor}}
+                        title={channel.display_name}
+                    >
                         {channel.display_name}
                         {items.length > 0 ? ` · ${items.length}` : ''}
                     </div>
                 </div>
                 <div style={styles.headerActions}>
+                    <ModePicker
+                        modes={modes}
+                        colors={colors}
+                        onChange={selectModes}
+                    />
                     <AuthorPicker
                         members={members}
-                        authorId={authorId}
+                        currentUserId={userId}
+                        selectedIds={selectedIds}
                         colors={colors}
-                        onSelect={selectAuthor}
+                        onChange={selectPeople}
                     />
                     <button
                         className={'btn btn-tertiary'}
@@ -295,23 +335,30 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                     </button>
                 </div>
             </div>
-            <ThreadList
-                months={months}
-                loading={loading}
-                loadingOlder={loadingOlder}
-                error={error}
-                noMoreMonths={noMoreMonths}
-                nextMonthLabel={monthLabel(oldestLoadedBack.current + 1, locale)}
-                reactionsByPost={reactionsByPost}
-                pickerFor={pickerFor}
-                colors={colors}
-                onRetry={() => setManualRefresh((n) => n + 1)}
-                onLoadOlder={loadOlder}
-                onOpenThread={openThread}
-                onJumpToPost={jumpToPost}
-                onToggleReaction={toggleReaction}
-                onTogglePicker={togglePicker}
-            />
+            {selectedIds.length === 0 ? (
+                <div style={{...styles.stateMessage, color: colors.secondaryColor}}>
+                    {t('panel.pickPeople')}
+                </div>
+            ) : (
+                <ThreadList
+                    months={months}
+                    loading={loading}
+                    loadingOlder={loadingOlder}
+                    error={error}
+                    noMoreMonths={noMoreMonths}
+                    nextMonthLabel={monthLabel(oldestLoadedBack.current + 1, locale)}
+                    mentionsOnly={!modes.own}
+                    reactionsByPost={reactionsByPost}
+                    pickerFor={pickerFor}
+                    colors={colors}
+                    onRetry={() => setManualRefresh((n) => n + 1)}
+                    onLoadOlder={loadOlder}
+                    onOpenThread={openThread}
+                    onJumpToPost={jumpToPost}
+                    onToggleReaction={toggleReaction}
+                    onTogglePicker={togglePicker}
+                />
+            )}
         </div>
     );
 }
