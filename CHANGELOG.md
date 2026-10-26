@@ -2,6 +2,12 @@
 
 All notable changes to the Only My Threads plugin. The format follows [Keep a Changelog](https://keepachangelog.com/en/); versions match `plugin.json`. Built releases live on the [GitHub Releases](https://github.com/arxell/mattermost-plugin-only-my-threads/releases) page.
 
+## [0.16.0] — 2026-10-26
+
+- New: a "Mentioned" option in the header dropdown. It lists the threads of the current channel where another member mentioned you (`@username` in the root or in any reply) — one row per thread showing its root message, sorted by the latest mention. A mention in a reply brings in the whole thread, even when its root is older than the month; your own threads appear here only when someone mentioned you in them, and mentioning yourself does not count. Same month pagination, reply counts, reaction chips and hover actions, with their own empty and end-of-history notes; the choice survives channel switches. The channel-scan fallback (servers without search) covers mentions too.
+- Changed: the default dropdown option is renamed from "My threads" to "My own threads" (RU «Мои собственные треды», FR « Mes propres fils », DE „Meine eigenen Threads“).
+- Data: the "Mentioned" list comes from a month search `in:{channel} @{username}` instead of `from:{username}`, windowed the same way. The server strips the `@` and matches the bare word, so posts are re-checked client-side for an explicit mention (not part of an email or of a longer username).
+
 ## [0.15.0] — 2026-09-22
 
 - Tests: migrated the webapp test stack from Jest 27 to Vitest 5 (`vitest run`, v8 coverage). All 75 test cases pass unchanged; `npm run coverage` replaces the old `jest --coverage` invocation.

@@ -15,14 +15,17 @@ import type {PanelColors} from 'components/types';
 type Props = {
     members: UserProfile[];
     authorId: string | null;
+    mentioned: boolean;
     colors: PanelColors;
     onSelect: (authorId: string | null) => void;
+    onSelectMentioned: () => void;
 };
 
-// Whose threads the list shows: the current user by default, or any
-// channel member picked in the header dropdown (a custom menu —
-// native <option>s cannot render member avatars).
-export default function AuthorPicker({members, authorId, colors, onSelect}: Props) {
+// Which threads the list shows: the current user's own by default, the
+// ones they are mentioned in, or the ones started by any channel member
+// picked in the header dropdown (a custom menu — native <option>s cannot
+// render member avatars).
+export default function AuthorPicker({members, authorId, mentioned, colors, onSelect, onSelectMentioned}: Props) {
     const {t} = useTranslation();
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
@@ -54,6 +57,19 @@ export default function AuthorPicker({members, authorId, colors, onSelect}: Prop
         onSelect(id);
     };
 
+    const pickMentioned = () => {
+        setOpen(false);
+        onSelectMentioned();
+    };
+
+    let buttonLabel: string = t('panel.authorFilter');
+    if (authorProfile) {
+        buttonLabel = authorProfile.username;
+    } else if (mentioned) {
+        buttonLabel = t('panel.mentionedFilter');
+    }
+    const selectedStyle = {background: withAlpha(linkColor, 0.1)};
+
     return (
         <>
             {/* The person glyph marks that a member filter is on. */}
@@ -83,12 +99,12 @@ export default function AuthorPicker({members, authorId, colors, onSelect}: Prop
                             return !wasOpen;
                         });
                     }}
-                    title={t('panel.authorFilter')}
-                    aria-label={t('panel.authorFilter')}
+                    title={buttonLabel}
+                    aria-label={buttonLabel}
                     aria-expanded={open}
                     style={styles.authorButton}
                 >
-                    {authorProfile ? authorProfile.username : t('panel.authorFilter')}
+                    {buttonLabel}
                     {' ▾'}
                 </button>
                 {open ? (
@@ -104,6 +120,7 @@ export default function AuthorPicker({members, authorId, colors, onSelect}: Prop
                         <button
                             className={'omt-menu-item'}
                             onClick={() => pick(null)}
+                            style={!authorId && !mentioned ? selectedStyle : undefined}
                         >
                             <svg
                                 width={'16'}
@@ -116,6 +133,23 @@ export default function AuthorPicker({members, authorId, colors, onSelect}: Prop
                                 <path d={'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'}/>
                             </svg>
                             {t('panel.authorFilter')}
+                        </button>
+                        <button
+                            className={'omt-menu-item'}
+                            onClick={pickMentioned}
+                            style={!authorId && mentioned ? selectedStyle : undefined}
+                        >
+                            <svg
+                                width={'16'}
+                                height={'16'}
+                                viewBox={'0 0 24 24'}
+                                fill={'currentColor'}
+                                aria-hidden={true}
+                                style={{color: secondaryColor, flexShrink: 0}}
+                            >
+                                <path d={'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10h5v-2h-5c-4.34 0-8-3.66-8-8s3.66-8 8-8 8 3.66 8 8v1.43c0 .79-.71 1.57-1.5 1.57s-1.5-.78-1.5-1.57V12c0-2.76-2.24-5-5-5s-5 2.24-5 5 2.24 5 5 5c1.38 0 2.64-.56 3.54-1.47.65.89 1.77 1.47 2.96 1.47 1.97 0 3.5-1.6 3.5-3.57V12c0-5.52-4.48-10-10-10zm0 13c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z'}/>
+                            </svg>
+                            {t('panel.mentionedFilter')}
                         </button>
                         <input
                             type={'text'}
@@ -144,7 +178,7 @@ export default function AuthorPicker({members, authorId, colors, onSelect}: Prop
                                 key={m.id}
                                 className={'omt-menu-item'}
                                 onClick={() => pick(m.id)}
-                                style={m.id === authorId ? {background: withAlpha(linkColor, 0.1)} : undefined}
+                                style={m.id === authorId ? selectedStyle : undefined}
                             >
                                 <img
                                     src={Client4.getProfilePictureUrl(m.id, m.last_picture_update)}

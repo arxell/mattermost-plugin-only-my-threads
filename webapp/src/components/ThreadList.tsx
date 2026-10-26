@@ -16,6 +16,9 @@ type Props = {
     error: string | null;
     noMoreMonths: boolean;
     nextMonthLabel: string;
+
+    // The "Mentioned" list words its empty and end-of-history notes apart.
+    mentionsOnly: boolean;
     reactionsByPost: Record<string, ReactionSummary[]>;
     pickerFor: string | null;
     colors: PanelColors;
@@ -29,7 +32,7 @@ type Props = {
 
 // The thread list with its loading/error/empty states, the "Show more"
 // month pagination and the end-of-history note.
-export default function ThreadList({months, loading, loadingOlder, error, noMoreMonths, nextMonthLabel, reactionsByPost, pickerFor, colors, onRetry, onLoadOlder, onOpenThread, onJumpToPost, onToggleReaction, onTogglePicker}: Props) {
+export default function ThreadList({months, loading, loadingOlder, error, noMoreMonths, nextMonthLabel, mentionsOnly, reactionsByPost, pickerFor, colors, onRetry, onLoadOlder, onOpenThread, onJumpToPost, onToggleReaction, onTogglePicker}: Props) {
     const {t} = useTranslation();
     const {secondaryColor, errorColor} = colors;
 
@@ -57,7 +60,7 @@ export default function ThreadList({months, loading, loadingOlder, error, noMore
     } else if (items.length === 0) {
         body = (
             <div style={{...styles.stateMessage, color: secondaryColor}}>
-                {t('panel.emptyMonth')}
+                {t(mentionsOnly ? 'panel.emptyMentions' : 'panel.emptyMonth')}
             </div>
         );
     } else {
@@ -104,7 +107,7 @@ export default function ThreadList({months, loading, loadingOlder, error, noMore
             {showMoreButton}
             {noMoreMonths && months !== null && !loading ? (
                 <div style={{...styles.noMore, color: secondaryColor}}>
-                    {t('panel.noMore')}
+                    {t(mentionsOnly ? 'panel.noMoreMentions' : 'panel.noMore')}
                 </div>
             ) : null}
         </>

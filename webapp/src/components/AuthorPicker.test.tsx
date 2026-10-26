@@ -50,12 +50,14 @@ const MEMBERS = [
     member('sasha'),
 ];
 
-const renderPicker = (authorId: string | null = null) => {
+const renderPicker = (authorId: string | null = null, mentioned = false) => {
     const props = {
         members: MEMBERS,
         authorId,
+        mentioned,
         colors,
         onSelect: vi.fn(),
+        onSelectMentioned: vi.fn(),
     };
     const container = render(<AuthorPicker {...props}/>);
     return {container, props};
@@ -95,9 +97,10 @@ describe('AuthorPicker', () => {
         expect(menu).not.toBeNull();
         const items = [...menu!.querySelectorAll<HTMLButtonElement>('.omt-menu-item')];
         expect(items[0].textContent).toBe(translateEn('panel.authorFilter'));
-        expect(items.slice(1).map((item) => item.textContent)).toEqual(['anton', 'ilya', 'sasha']);
+        expect(items[1].textContent).toBe(translateEn('panel.mentionedFilter'));
+        expect(items.slice(2).map((item) => item.textContent)).toEqual(['anton', 'ilya', 'sasha']);
 
-        const avatar = items[1].querySelector('img');
+        const avatar = items[2].querySelector('img');
         expect(avatar?.getAttribute('src')).toContain('/api/v4/users/anton/image');
     });
 
@@ -108,8 +111,8 @@ describe('AuthorPicker', () => {
 
         type(input, 'ilyusha');
         const items = [...container.querySelectorAll('.omt-menu-item')];
-        expect(items).toHaveLength(2); // the reset row plus the match
-        expect(items[1].textContent).toBe('ilya');
+        expect(items).toHaveLength(3); // the two fixed rows plus the match
+        expect(items[2].textContent).toBe('ilya');
 
         type(input, 'zzz');
         expect(container.textContent).toContain(translateEn('panel.noMatch'));
@@ -119,7 +122,7 @@ describe('AuthorPicker', () => {
         const {container, props} = renderPicker();
         openPicker(container);
 
-        click([...container.querySelectorAll<HTMLButtonElement>('.omt-menu-item')][2]);
+        click([...container.querySelectorAll<HTMLButtonElement>('.omt-menu-item')][3]);
         expect(props.onSelect).toHaveBeenCalledWith('ilya');
         expect(container.querySelector('.omt-menu')).toBeNull();
     });
@@ -155,6 +158,22 @@ describe('AuthorPicker', () => {
         openPicker(container);
         click(container.querySelector<HTMLButtonElement>('.omt-menu-item')!);
         expect(props.onSelect).toHaveBeenCalledWith(null);
+    });
+
+    it('the mentioned row switches the list and labels the button', () => {
+        const {container, props} = renderPicker();
+        openPicker(container);
+
+        click([...container.querySelectorAll<HTMLButtonElement>('.omt-menu-item')][1]);
+        expect(props.onSelectMentioned).toHaveBeenCalledTimes(1);
+        expect(props.onSelect).not.toHaveBeenCalled();
+        expect(container.querySelector('.omt-menu')).toBeNull();
+
+        cleanup();
+        const {container: picked} = renderPicker(null, true);
+        const button = picked.querySelector('button[aria-expanded]')!;
+        expect(button.textContent).toContain(translateEn('panel.mentionedFilter'));
+        expect(button.getAttribute('aria-label')).toBe(translateEn('panel.mentionedFilter'));
     });
 
     it('closes the menu on an outside mousedown', () => {

@@ -71,8 +71,11 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
     const [manualRefresh, setManualRefresh] = useState(0);
 
     // Whose threads the list shows: the current user by default, or any
-    // channel member picked in the header dropdown.
+    // channel member picked in the header dropdown. "Mentioned" swaps the
+    // current user's own threads for the ones they are mentioned in; it
+    // survives channel switches, unlike the per-channel member choice.
     const [authorId, setAuthorId] = useState<string | null>(null);
+    const [mentioned, setMentioned] = useState(false);
     const [members, setMembers] = useState<UserProfile[]>([]);
 
     // Live reaction chips, overriding the month-fetch data. Keyed by root
@@ -127,7 +130,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                     setMembers(profiles);
                 }
             }).catch(() => {
-                // The dropdown just stays with the "My threads" option.
+                // The dropdown just stays with the current user's options.
             });
             return () => {
                 cancelled = true;
@@ -142,6 +145,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
         channelName: channelName || '',
         isPrivateChannel,
         username: authorUsername,
+        mentionsOnly: mentioned && !authorId,
     };
 
     useEffect(() => {
@@ -159,11 +163,17 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                     return;
                 }
 
+                const freshIds = new Set(result.map((thread) => thread.id));
+
                 // Replace only the current month; keep already loaded older
-                // months (they are historical and never change).
+                // months (they are historical and never change). A thread
+                // of an older month can still move up here — a fresh
+                // mention in the "Mentioned" list — so it leaves its
+                // old month instead of showing twice.
                 setMonths((prev) => {
                     oldestLoadedBack.current = Math.max(oldestLoadedBack.current, 0);
-                    return [result, ...(prev ? prev.slice(1) : [])];
+                    const older = (prev ? prev.slice(1) : []).map((month) => month.filter((thread) => !freshIds.has(thread.id)));
+                    return [result, ...older];
                 });
 
                 // The fresh month carries the server's current reactions,
@@ -172,7 +182,6 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                 // showing chips as they were when the panel last toggled
                 // them. Overrides of other months' threads stay.
                 setReactionsByPost((prev) => {
-                    const freshIds = new Set(result.map((thread) => thread.id));
                     const next: Record<string, ReactionSummary[]> = {};
                     for (const [postId, summaries] of Object.entries(prev)) {
                         if (!freshIds.has(postId)) {
@@ -199,7 +208,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [channelId, channelName, isPrivateChannel, authorId, userId, teamId, postedSeq, manualRefresh]);
+    }, [channelId, channelName, isPrivateChannel, authorId, mentioned, userId, teamId, postedSeq, manualRefresh]);
 
     // Reaction websocket events refresh the chips of the affected thread.
     useEffect(() => {
@@ -250,6 +259,13 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
 
     const selectAuthor = (id: string | null) => {
         setAuthorId(id);
+        setMentioned(false);
+        resetList();
+    };
+
+    const selectMentioned = () => {
+        setAuthorId(null);
+        setMentioned(true);
         resetList();
     };
 
@@ -274,8 +290,10 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                     <AuthorPicker
                         members={members}
                         authorId={authorId}
+                        mentioned={mentioned}
                         colors={colors}
                         onSelect={selectAuthor}
+                        onSelectMentioned={selectMentioned}
                     />
                     <button
                         className={'btn btn-tertiary'}
@@ -302,6 +320,7 @@ export default function OnlyMyThreadsRHS(): JSX.Element {
                 error={error}
                 noMoreMonths={noMoreMonths}
                 nextMonthLabel={monthLabel(oldestLoadedBack.current + 1, locale)}
+                mentionsOnly={Boolean(searchContext.mentionsOnly)}
                 reactionsByPost={reactionsByPost}
                 pickerFor={pickerFor}
                 colors={colors}
