@@ -2,78 +2,71 @@
 // See LICENSE.txt for license information.
 
 import {useTranslation} from 'i18n';
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useCallback, useState} from 'react';
 import {filterMembers} from 'utils/members';
 
 import type {UserProfile} from '@mattermost/types/users';
 
 import {Client4} from 'mattermost-redux/client';
 
-import {styles, withAlpha} from 'components/styles';
+import {MenuCheckItem, menuStyle, useMenuDismiss} from 'components/menu';
+import {styles} from 'components/styles';
 import type {PanelColors} from 'components/types';
 
 type Props = {
     members: UserProfile[];
-    authorId: string | null;
-    mentioned: boolean;
+    currentUserId: string;
+    selectedIds: string[];
     colors: PanelColors;
-    onSelect: (authorId: string | null) => void;
-    onSelectMentioned: () => void;
+    onChange: (selectedIds: string[]) => void;
 };
 
-// Which threads the list shows: the current user's own by default, the
-// ones they are mentioned in, or the ones started by any channel member
-// picked in the header dropdown (a custom menu — native <option>s cannot
-// render member avatars).
-export default function AuthorPicker({members, authorId, mentioned, colors, onSelect, onSelectMentioned}: Props) {
+// Checks or unchecks exactly one person — never touching the others, so
+// the selection may become empty (the panel then asks to pick someone).
+export function togglePerson(selectedIds: string[], id: string): string[] {
+    return selectedIds.includes(id) ? selectedIds.filter((s) => s !== id) : [...selectedIds, id];
+}
+
+// Whose threads the list shows: the current user ("Me", first and checked
+// by default) and/or any channel members, several at once (a custom menu —
+// native <option>s cannot render member avatars).
+export default function AuthorPicker({members, currentUserId, selectedIds, colors, onChange}: Props) {
     const {t} = useTranslation();
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
-    const menuRef = useRef<HTMLDivElement | null>(null);
+    const close = useCallback(() => setOpen(false), []);
+    const menuRef = useMenuDismiss(open, close);
 
-    const {centerColor, linkColor, secondaryColor, toolbarBg} = colors;
+    const {secondaryColor} = colors;
 
-    // Closes the menu on any click outside of it.
-    useEffect(() => {
-        if (!open) {
-            return undefined;
-        }
-        const onDocMouseDown = (e: MouseEvent) => {
-            if (menuRef.current && e.target instanceof Node && !menuRef.current.contains(e.target)) {
-                setOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', onDocMouseDown);
-        return () => {
-            document.removeEventListener('mousedown', onDocMouseDown);
-        };
-    }, [open]);
+    const others = members.filter((m) => m.id !== currentUserId);
+    const matches = filterMembers(others, query);
+    const me = members.find((m) => m.id === currentUserId);
+    const toggle = (id: string) => onChange(togglePerson(selectedIds, id));
 
-    const authorProfile = authorId ? members.find((m) => m.id === authorId) : null;
-    const matches = filterMembers(members, query);
-
-    const pick = (id: string | null) => {
-        setOpen(false);
-        onSelect(id);
-    };
-
-    const pickMentioned = () => {
-        setOpen(false);
-        onSelectMentioned();
-    };
-
-    let buttonLabel: string = t('panel.authorFilter');
-    if (authorProfile) {
-        buttonLabel = authorProfile.username;
-    } else if (mentioned) {
-        buttonLabel = t('panel.mentionedFilter');
+    const nameOf = (id: string) => (id === currentUserId ? t('panel.me') : members.find((m) => m.id === id)?.username ?? '…');
+    let buttonLabel: string = t('panel.peopleCount', {count: selectedIds.length});
+    if (selectedIds.length === 0) {
+        buttonLabel = t('panel.nobody');
+    } else if (selectedIds.length <= 2) {
+        buttonLabel = selectedIds.map(nameOf).join(', ');
     }
-    const selectedStyle = {background: withAlpha(linkColor, 0.1)};
+    const onlyMe = selectedIds.length === 1 && selectedIds[0] === currentUserId;
+
+    const avatar = (profile: UserProfile | undefined, id: string) => (
+        <img
+            src={Client4.getProfilePictureUrl(id, profile?.last_picture_update ?? 0)}
+            alt={''}
+            width={18}
+            height={18}
+            style={styles.avatar}
+        />
+    );
 
     return (
         <>
-            {/* The person glyph marks that a member filter is on. */}
-            {authorId ? (
+            {/* The person glyph marks that the list shows someone besides "Me". */}
+            {onlyMe ? null : (
                 <svg
                     width={'14'}
                     height={'14'}
@@ -84,7 +77,7 @@ export default function AuthorPicker({members, authorId, mentioned, colors, onSe
                 >
                     <path d={'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'}/>
                 </svg>
-            ) : null}
+            )}
             <div
                 ref={menuRef}
                 style={styles.menuWrap}
@@ -99,8 +92,8 @@ export default function AuthorPicker({members, authorId, mentioned, colors, onSe
                             return !wasOpen;
                         });
                     }}
-                    title={buttonLabel}
-                    aria-label={buttonLabel}
+                    title={t('panel.authorFilter')}
+                    aria-label={`${t('panel.authorFilter')}: ${buttonLabel}`}
                     aria-expanded={open}
                     style={styles.authorButton}
                 >
@@ -110,47 +103,21 @@ export default function AuthorPicker({members, authorId, mentioned, colors, onSe
                 {open ? (
                     <div
                         className={'omt-menu'}
-                        style={{
-                            background: toolbarBg,
-                            border: `1px solid ${withAlpha(centerColor, 0.15)}`,
-                            '--omt-hover': withAlpha(centerColor, 0.08),
-                            color: centerColor,
-                        } as React.CSSProperties}
+                        style={menuStyle(colors)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                                close();
+                            }
+                        }}
                     >
-                        <button
-                            className={'omt-menu-item'}
-                            onClick={() => pick(null)}
-                            style={!authorId && !mentioned ? selectedStyle : undefined}
+                        <MenuCheckItem
+                            checked={selectedIds.includes(currentUserId)}
+                            colors={colors}
+                            onToggle={() => toggle(currentUserId)}
                         >
-                            <svg
-                                width={'16'}
-                                height={'16'}
-                                viewBox={'0 0 24 24'}
-                                fill={'currentColor'}
-                                aria-hidden={true}
-                                style={{color: secondaryColor, flexShrink: 0}}
-                            >
-                                <path d={'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'}/>
-                            </svg>
-                            {t('panel.authorFilter')}
-                        </button>
-                        <button
-                            className={'omt-menu-item'}
-                            onClick={pickMentioned}
-                            style={!authorId && mentioned ? selectedStyle : undefined}
-                        >
-                            <svg
-                                width={'16'}
-                                height={'16'}
-                                viewBox={'0 0 24 24'}
-                                fill={'currentColor'}
-                                aria-hidden={true}
-                                style={{color: secondaryColor, flexShrink: 0}}
-                            >
-                                <path d={'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10h5v-2h-5c-4.34 0-8-3.66-8-8s3.66-8 8-8 8 3.66 8 8v1.43c0 .79-.71 1.57-1.5 1.57s-1.5-.78-1.5-1.57V12c0-2.76-2.24-5-5-5s-5 2.24-5 5 2.24 5 5 5c1.38 0 2.64-.56 3.54-1.47.65.89 1.77 1.47 2.96 1.47 1.97 0 3.5-1.6 3.5-3.57V12c0-5.52-4.48-10-10-10zm0 13c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z'}/>
-                            </svg>
-                            {t('panel.mentionedFilter')}
-                        </button>
+                            {avatar(me, currentUserId)}
+                            {t('panel.me')}
+                        </MenuCheckItem>
                         <input
                             type={'text'}
                             className={'form-control'}
@@ -160,10 +127,8 @@ export default function AuthorPicker({members, authorId, mentioned, colors, onSe
                             aria-label={t('panel.authorSearch')}
                             onChange={(e) => setQuery(e.target.value)}
                             onKeyDown={(e) => {
-                                if (e.key === 'Escape') {
-                                    setOpen(false);
-                                } else if (e.key === 'Enter' && matches.length > 0) {
-                                    pick(matches[0].id);
+                                if (e.key === 'Enter' && matches.length > 0) {
+                                    toggle(matches[0].id);
                                 }
                             }}
                             style={styles.authorSearch}
@@ -174,21 +139,15 @@ export default function AuthorPicker({members, authorId, mentioned, colors, onSe
                             </div>
                         ) : null}
                         {matches.map((m) => (
-                            <button
+                            <MenuCheckItem
                                 key={m.id}
-                                className={'omt-menu-item'}
-                                onClick={() => pick(m.id)}
-                                style={m.id === authorId ? selectedStyle : undefined}
+                                checked={selectedIds.includes(m.id)}
+                                colors={colors}
+                                onToggle={() => toggle(m.id)}
                             >
-                                <img
-                                    src={Client4.getProfilePictureUrl(m.id, m.last_picture_update)}
-                                    alt={''}
-                                    width={18}
-                                    height={18}
-                                    style={styles.avatar}
-                                />
+                                {avatar(m, m.id)}
                                 {m.username}
-                            </button>
+                            </MenuCheckItem>
                         ))}
                     </div>
                 ) : null}

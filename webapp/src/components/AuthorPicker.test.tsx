@@ -9,7 +9,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 
 import type {UserProfile} from '@mattermost/types/users';
 
-import AuthorPicker from './AuthorPicker';
+import AuthorPicker, {togglePerson} from './AuthorPicker';
 import type {PanelColors} from './types';
 
 import {cleanup, render, translateEn} from '../../tests/test_utils';
@@ -44,20 +44,20 @@ const member = (username: string, overrides: Partial<UserProfile> = {}): UserPro
     ...overrides,
 } as UserProfile);
 
+// "anton" is the current user; he is listed once, as the "Me" row.
 const MEMBERS = [
     member('anton', {first_name: 'Anton', last_name: 'Gorodnikov'}),
     member('ilya', {nickname: 'Ilyusha'}),
     member('sasha'),
 ];
 
-const renderPicker = (authorId: string | null = null, mentioned = false) => {
+const renderPicker = (selectedIds: string[] = ['anton']) => {
     const props = {
         members: MEMBERS,
-        authorId,
-        mentioned,
+        currentUserId: 'anton',
+        selectedIds,
         colors,
-        onSelect: vi.fn(),
-        onSelectMentioned: vi.fn(),
+        onChange: vi.fn(),
     };
     const container = render(<AuthorPicker {...props}/>);
     return {container, props};
@@ -82,26 +82,44 @@ const openPicker = (container: HTMLElement) => {
     return container.querySelector('.omt-menu');
 };
 
+const rows = (container: HTMLElement) => [...container.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]')];
+
+describe('togglePerson', () => {
+    it('toggles exactly the clicked person and never the others', () => {
+        expect(togglePerson(['anton'], 'ilya')).toEqual(['anton', 'ilya']);
+        expect(togglePerson(['anton', 'ilya'], 'anton')).toEqual(['ilya']);
+
+        // Regressions: "Me" alone must uncheck, and unchecking the last
+        // other person must not bring "Me" back.
+        expect(togglePerson(['anton'], 'anton')).toEqual([]);
+        expect(togglePerson(['ilya'], 'ilya')).toEqual([]);
+    });
+});
+
 describe('AuthorPicker', () => {
-    it('shows the filter label when no author is picked', () => {
-        const {container} = renderPicker();
-        const button = container.querySelector('button[aria-expanded]')!;
-        expect(button.textContent).toContain(translateEn('panel.authorFilter'));
-        expect(container.querySelector('.omt-menu')).toBeNull();
+    it('labels the button by the picked people', () => {
+        const label = (selectedIds: string[]) => {
+            cleanup();
+            const {container} = renderPicker(selectedIds);
+            return container.querySelector('button[aria-expanded]')!.textContent;
+        };
+        expect(label([])).toContain(translateEn('panel.nobody'));
+        expect(label(['anton'])).toContain(translateEn('panel.me'));
+        expect(label(['ilya'])).toContain('ilya');
+        expect(label(['anton', 'ilya'])).toContain(`${translateEn('panel.me')}, ilya`);
+        expect(label(['anton', 'ilya', 'sasha'])).toContain(translateEn('panel.peopleCount', {count: 3}));
     });
 
-    it('opens the menu with every member, avatars included', () => {
+    it('lists "Me" first, checked by default, then the other members with avatars', () => {
         const {container} = renderPicker();
         const menu = openPicker(container);
 
         expect(menu).not.toBeNull();
-        const items = [...menu!.querySelectorAll<HTMLButtonElement>('.omt-menu-item')];
-        expect(items[0].textContent).toBe(translateEn('panel.authorFilter'));
-        expect(items[1].textContent).toBe(translateEn('panel.mentionedFilter'));
-        expect(items.slice(2).map((item) => item.textContent)).toEqual(['anton', 'ilya', 'sasha']);
-
-        const avatar = items[2].querySelector('img');
-        expect(avatar?.getAttribute('src')).toContain('/api/v4/users/anton/image');
+        const items = rows(container);
+        expect(items.map((item) => item.textContent)).toEqual([translateEn('panel.me'), 'ilya', 'sasha']);
+        expect(items.map((item) => item.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false']);
+        expect(items[0].querySelector('img')?.getAttribute('src')).toContain('/api/v4/users/anton/image');
+        expect(items[1].querySelector('img')?.getAttribute('src')).toContain('/api/v4/users/ilya/image');
     });
 
     it('filters members by the search input, nicknames included', () => {
@@ -110,24 +128,46 @@ describe('AuthorPicker', () => {
         const input = container.querySelector<HTMLInputElement>('input.form-control')!;
 
         type(input, 'ilyusha');
-        const items = [...container.querySelectorAll('.omt-menu-item')];
-        expect(items).toHaveLength(3); // the two fixed rows plus the match
-        expect(items[2].textContent).toBe('ilya');
+        const items = rows(container);
+        expect(items).toHaveLength(2); // the "Me" row plus the match
+        expect(items[1].textContent).toBe('ilya');
 
         type(input, 'zzz');
         expect(container.textContent).toContain(translateEn('panel.noMatch'));
     });
 
-    it('selects a member on click and closes the menu', () => {
+    it('toggling a member adds them and keeps the menu open', () => {
         const {container, props} = renderPicker();
         openPicker(container);
 
-        click([...container.querySelectorAll<HTMLButtonElement>('.omt-menu-item')][3]);
-        expect(props.onSelect).toHaveBeenCalledWith('ilya');
-        expect(container.querySelector('.omt-menu')).toBeNull();
+        click(rows(container)[1]);
+        expect(props.onChange).toHaveBeenCalledWith(['anton', 'ilya']);
+        expect(container.querySelector('.omt-menu')).not.toBeNull();
     });
 
-    it('Enter picks the first match, Escape closes the menu', () => {
+    it('unchecking "Me" leaves only the other picked people', () => {
+        const {container, props} = renderPicker(['anton', 'sasha']);
+        openPicker(container);
+
+        click(rows(container)[0]);
+        expect(props.onChange).toHaveBeenCalledWith(['sasha']);
+    });
+
+    it('"Me" alone unchecks, and the last other person unchecks without checking "Me"', () => {
+        const {container, props} = renderPicker(['anton']);
+        openPicker(container);
+        click(rows(container)[0]);
+        expect(props.onChange).toHaveBeenLastCalledWith([]);
+
+        cleanup();
+        const {container: other, props: otherProps} = renderPicker(['ilya']);
+        openPicker(other);
+        expect(rows(other).map((row) => row.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false']);
+        click(rows(other)[1]);
+        expect(otherProps.onChange).toHaveBeenLastCalledWith([]);
+    });
+
+    it('Enter toggles the first match, Escape closes the menu', () => {
         const {container, props} = renderPicker();
         openPicker(container);
         const input = container.querySelector<HTMLInputElement>('input.form-control')!;
@@ -136,44 +176,28 @@ describe('AuthorPicker', () => {
         act(() => {
             input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
         });
-        expect(props.onSelect).toHaveBeenCalledWith('sasha');
+        expect(props.onChange).toHaveBeenCalledWith(['anton', 'sasha']);
 
-        // The menu is re-created on reopen, so the input must be re-queried.
-        openPicker(container);
-        const freshInput = container.querySelector<HTMLInputElement>('input.form-control')!;
         act(() => {
-            freshInput.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+        });
+        expect(container.querySelector('.omt-menu')).toBeNull();
+
+        // Escape also works with the focus on a row (after a click on it).
+        openPicker(container);
+        act(() => {
+            rows(container)[1].dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
         });
         expect(container.querySelector('.omt-menu')).toBeNull();
     });
 
-    it('the reset row clears the picked author', () => {
-        const {container, props} = renderPicker('ilya');
-
-        // The button shows the picked member and the person glyph is on.
-        const button = container.querySelector('button[aria-expanded]')!;
-        expect(button.textContent).toContain('ilya');
-        expect(container.querySelector('svg')).not.toBeNull();
-
-        openPicker(container);
-        click(container.querySelector<HTMLButtonElement>('.omt-menu-item')!);
-        expect(props.onSelect).toHaveBeenCalledWith(null);
-    });
-
-    it('the mentioned row switches the list and labels the button', () => {
-        const {container, props} = renderPicker();
-        openPicker(container);
-
-        click([...container.querySelectorAll<HTMLButtonElement>('.omt-menu-item')][1]);
-        expect(props.onSelectMentioned).toHaveBeenCalledTimes(1);
-        expect(props.onSelect).not.toHaveBeenCalled();
-        expect(container.querySelector('.omt-menu')).toBeNull();
+    it('shows the person glyph only when someone besides "Me" is picked', () => {
+        const {container} = renderPicker();
+        expect(container.querySelector(':scope > svg')).toBeNull();
 
         cleanup();
-        const {container: picked} = renderPicker(null, true);
-        const button = picked.querySelector('button[aria-expanded]')!;
-        expect(button.textContent).toContain(translateEn('panel.mentionedFilter'));
-        expect(button.getAttribute('aria-label')).toBe(translateEn('panel.mentionedFilter'));
+        const {container: others} = renderPicker(['ilya']);
+        expect(others.querySelector(':scope > svg')).not.toBeNull();
     });
 
     it('closes the menu on an outside mousedown', () => {

@@ -4,9 +4,12 @@ All notable changes to the Only My Threads plugin. The format follows [Keep a Ch
 
 ## [0.16.0] — 2026-10-26
 
-- New: a "Mentioned" option in the header dropdown. It lists the threads of the current channel where another member mentioned you (`@username` in the root or in any reply) — one row per thread showing its root message, sorted by the latest mention. A mention in a reply brings in the whole thread, even when its root is older than the month; your own threads appear here only when someone mentioned you in them, and mentioning yourself does not count. Same month pagination, reply counts, reaction chips and hover actions, with their own empty and end-of-history notes; the choice survives channel switches. The channel-scan fallback (servers without search) covers mentions too.
-- Changed: the default dropdown option is renamed from "My threads" to "My own threads" (RU «Мои собственные треды», FR « Mes propres fils », DE „Meine eigenen Threads“).
-- Data: the "Mentioned" list comes from a month search `in:{channel} @{username}` instead of `from:{username}`, windowed the same way. The server strips the `@` and matches the bare word, so posts are re-checked client-side for an explicit mention (not part of an email or of a longer username).
+- New: mentions. The panel now also lists the threads of the current channel where another member mentioned you (`@username` in the root or in any reply) — one row per thread showing its root message. A mention in a reply brings in the whole thread, even when its root is older than the month; mentioning yourself does not count. The list is sorted by the newest activity: creation for your own threads, the latest mention otherwise.
+- New: two multiselect dropdowns in the panel header replace the single author picker.
+  - **Mode** — "All threads" (default), "Own", "Mentioned", Grafana-style: All checks every value, picking a value while All is on keeps just that value, unchecking the last value falls back to All. The choice survives channel switches.
+  - **People** — "Me" (first, checked by default), a search box and the other channel members with avatars; any number of people at once, the list is the union over them. Each checkbox toggles only itself; with nobody checked the panel asks to pick someone. The choice resets to "Me" on channel switch. The button shows "Me", one or two names, "{count} people" or "Nobody".
+  - Toggling a value keeps the menu open; Escape or a click outside closes it.
+- Data: one month search per source for all picked people — `from:a from:b` for own roots (the server OR-s several `from:`), `@a @b` with `is_or_search` for mentions — windowed the same way. The server strips the `@` and matches the bare word, so posts are re-checked client-side for an explicit mention (not part of an email or of a longer username). The channel-scan fallback (servers without search) covers both sources and every picked person; it previously always matched the signed-in user's own roots, even with another member picked.
 
 ## [0.15.0] — 2026-09-22
 

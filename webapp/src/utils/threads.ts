@@ -58,15 +58,30 @@ export function aggregateReactions(reactions: Reaction[] | null | undefined, use
     return [...byName.values()].sort((a, b) => b.count - a.count || a.emojiName.localeCompare(b.emojiName));
 }
 
-// Context needed to find the user's posts via server-side search.
+// A person whose threads the list shows.
+export interface ThreadPerson {
+    id: string;
+    username: string;
+}
+
+// Context needed to find the people's posts via server-side search.
 export interface SearchContext {
     channelName: string;
     isPrivateChannel: boolean;
-    username: string;
 
-    // "Mentioned": instead of the user's own roots, the threads where
-    // another member's post (root or reply) mentions @username.
-    mentionsOnly?: boolean;
+    // At least one person; the list is the union over all of them.
+    people: ThreadPerson[];
+
+    // The two combinable sources of the list: the roots the people started
+    // (on unless set to false) and the threads where another member's post
+    // (root or reply) mentions one of them.
+    includeOwn?: boolean;
+    includeMentions?: boolean;
+}
+
+// The post mentions one of the people other than its own author.
+function mentionsSomeone(post: Post, people: ThreadPerson[]): boolean {
+    return people.some((person) => person.id !== post.user_id && mentionsUser(post.message, person.username));
 }
 
 function escapeRegExp(text: string): string {
@@ -115,11 +130,13 @@ function monthBounds(monthsBack: number): {after: string; before: string} {
     return {after: fmt(afterStart), before: fmt(end)};
 }
 
-// Every post of one month in the channel matching the filter term
-// (`from:user` or `@user`). Month pagination is server-side: the search
-// request is bounded by after:/before: dates, so the cost never depends on
-// channel volume.
-async function searchMonthPosts(teamId: string, ctx: SearchContext, monthsBack: number, filterTerm: string): Promise<Post[]> {
+// Every post of one month in the channel matching the filter terms
+// (`from:a from:b` or `@a @b`). Several from: flags are OR-ed by the server
+// itself; text terms are OR-ed only with isOrSearch, which leaves the
+// in:/from:/date filters AND-ed. Month pagination is server-side: the
+// search request is bounded by after:/before: dates, so the cost never
+// depends on channel volume.
+async function searchMonthPosts(teamId: string, ctx: SearchContext, monthsBack: number, filterTerm: string, isOrSearch = false): Promise<Post[]> {
     const {after} = monthBounds(monthsBack);
     const channelTerm = (ctx.isPrivateChannel ? '~' : '') + ctx.channelName;
 
@@ -135,7 +152,7 @@ async function searchMonthPosts(teamId: string, ctx: SearchContext, monthsBack: 
         const terms = `in:${channelTerm} ${filterTerm} after:${windowAfter} before:${windowBefore}`;
         const results = await Client4.searchPostsWithParams(teamId, {
             terms,
-            is_or_search: false,
+            is_or_search: isOrSearch,
             page: 0,
             per_page: SEARCH_LIMIT,
         });
@@ -181,39 +198,44 @@ async function searchMonthPosts(teamId: string, ctx: SearchContext, monthsBack: 
     return [...collected.values()].filter((post) => !post.delete_at);
 }
 
-// The user's threads for one month, with reply counts and reactions: the
-// roots they started or, with mentionsOnly, the threads where a post of
-// this month mentions them. Reply counts and reactions for every root
-// come from a single batch request (POST /posts/ids) instead of two
-// requests per thread.
+// The people's threads for one month, with reply counts and reactions:
+// the roots they started and/or the threads where a post of this month
+// mentions one of them. Reply counts and reactions for every root come
+// from a single batch request (POST /posts/ids) instead of two requests
+// per thread. userId is the viewer, whose reactions the chips mark.
 async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchContext, monthsBack: number): Promise<MyThread[]> {
+    const noPosts = Promise.resolve([] as Post[]);
+    const fromTerms = ctx.people.map((person) => `from:${person.username}`).join(' ');
+    const mentionTerms = ctx.people.map((person) => `@${person.username}`).join(' ');
+    const [own, mentioning] = await Promise.all([
+        ctx.includeOwn === false ? noPosts : searchMonthPosts(teamId, ctx, monthsBack, fromTerms),
+        ctx.includeMentions ? searchMonthPosts(teamId, ctx, monthsBack, mentionTerms, ctx.people.length > 1) : noPosts,
+    ]);
+
     // Root posts already at hand, and when each thread got into this
-    // month's list (its creation, or the newest mention of the user).
+    // month's list (its creation, or the newest mention).
     const rootsById = new Map<string, Post>();
     const activityAt = new Map<string, number>();
+    for (const post of own) {
+        if (post.root_id === '') {
+            rootsById.set(post.id, post);
+            activityAt.set(post.id, post.create_at);
+        }
+    }
 
-    if (ctx.mentionsOnly) {
-        // The search drops the "@" and matches the bare word, so the
-        // explicit mention is re-checked here; the user's own posts do not
-        // count as being mentioned. A mention in a reply brings in its
-        // root, which is fetched by the batch request below.
-        for (const post of await searchMonthPosts(teamId, ctx, monthsBack, `@${ctx.username}`)) {
-            if (post.user_id === userId || !mentionsUser(post.message, ctx.username)) {
-                continue;
-            }
-            const rootId = post.root_id || post.id;
-            if (!post.root_id) {
-                rootsById.set(post.id, post);
-            }
-            activityAt.set(rootId, Math.max(activityAt.get(rootId) ?? 0, post.create_at));
+    // The search drops the "@" and matches the bare word, so the explicit
+    // mention is re-checked here; mentioning oneself does not count. A
+    // mention in a reply brings in its root, which is fetched by the batch
+    // request below.
+    for (const post of mentioning) {
+        if (!mentionsSomeone(post, ctx.people)) {
+            continue;
         }
-    } else {
-        for (const post of await searchMonthPosts(teamId, ctx, monthsBack, `from:${ctx.username}`)) {
-            if (post.root_id === '') {
-                rootsById.set(post.id, post);
-                activityAt.set(post.id, post.create_at);
-            }
+        const rootId = post.root_id || post.id;
+        if (!post.root_id && !rootsById.has(post.id)) {
+            rootsById.set(post.id, post);
         }
+        activityAt.set(rootId, Math.max(activityAt.get(rootId) ?? 0, post.create_at));
     }
 
     const threadIds = [...activityAt.keys()];
@@ -257,8 +279,8 @@ async function fetchMonthThreads(userId: string, teamId: string, ctx: SearchCont
         });
     }
 
-    // Newest activity first: the creation date for own roots (the default
-    // list keeps its creation order), the newest mention otherwise.
+    // Newest activity first: the creation date for own roots (an own-only
+    // list keeps its creation order), the newest mention if later.
     return threads.sort((a, b) => (activityAt.get(b.id) ?? 0) - (activityAt.get(a.id) ?? 0));
 }
 
@@ -268,7 +290,7 @@ export async function fetchCurrentMonth(userId: string, teamId: string, channelI
     try {
         return await fetchMonthThreads(userId, teamId, ctx, 0);
     } catch (e) {
-        return fetchAllByScan(channelId, userId, ctx);
+        return fetchAllByScan(channelId, ctx);
     }
 }
 
@@ -297,10 +319,9 @@ export async function fetchOlderMonth(userId: string, teamId: string, ctx: Searc
 }
 
 // Fallback for servers without search: page through the channel post
-// stream and count replies client-side. Includes unreplied roots; with
-// mentionsOnly the scanned threads where another member mentions the user
-// replace the own ones.
-async function fetchAllByScan(channelId: string, userId: string, ctx: SearchContext): Promise<MyThread[]> {
+// stream and count replies client-side. Includes unreplied roots; the
+// includeOwn/includeMentions sources apply to the scanned threads.
+async function fetchAllByScan(channelId: string, ctx: SearchContext): Promise<MyThread[]> {
     const posts = new Map<string, Post>();
     let scanned = 0;
 
@@ -332,17 +353,19 @@ async function fetchAllByScan(channelId: string, userId: string, ctx: SearchCont
                 (replyCountByRoot.get(post.root_id) ?? 0) + 1,
             );
         }
-        if (ctx.mentionsOnly && post.user_id !== userId && mentionsUser(post.message, ctx.username)) {
+        if (ctx.includeMentions && mentionsSomeone(post, ctx.people)) {
             mentionedRoots.add(post.root_id || post.id);
         }
     }
 
+    const peopleIds = new Set(ctx.people.map((person) => person.id));
     const threads: MyThread[] = [];
     for (const post of posts.values()) {
         if (post.root_id || post.delete_at) {
             continue;
         }
-        if (ctx.mentionsOnly ? !mentionedRoots.has(post.id) : post.user_id !== userId) {
+        const isOwn = ctx.includeOwn !== false && peopleIds.has(post.user_id);
+        if (!isOwn && !mentionedRoots.has(post.id)) {
             continue;
         }
 

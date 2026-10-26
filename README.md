@@ -13,8 +13,8 @@ Based on the official [mattermost-plugin-starter-template](https://github.com/ma
 ![The Only My Threads panel with the author picker, reactions and the Reply/Jump hover toolbar](docs/screenshot.png)
 
 - **Your threads only** — lists the threads of the current channel whose first message is yours, including unreplied messages.
-- **Mentioned** — one click switches the list to the threads where someone @mentioned you, in the root or in any reply; one row per thread.
-- **Anyone's threads** — a header picker switches the list to the threads any channel member started: avatars, search by nickname or real name, one request for the member list.
+- **Mentions too** — the threads where someone @mentioned you, in the root or in any reply, one row per thread; a Grafana-style **Mode** dropdown picks All / Own / Mentioned.
+- **Anyone's threads** — a **People** multiselect adds any channel members to "Me" (or replaces it): avatars, search by nickname or real name, one request for the member list.
 - **Awaiting reply at a glance** — unreplied messages are marked with ⏳, so you always see where you are waiting for an answer.
 - **Reply in place** — any thread opens in the right-hand sidebar with the reply composer, exactly like Saved Messages.
 - **Jump to the channel** — permalink navigation scrolls the channel to the post and highlights it.
@@ -28,7 +28,7 @@ Based on the official [mattermost-plugin-starter-template](https://github.com/ma
 2. The panel lists your threads in the current channel; hover a row for actions.
 3. **Reply** opens the thread with the composer; **Jump** scrolls the channel to the post.
 4. Use the "Show more: {month}" button to page back through older threads.
-5. Pick "Mentioned" in the header dropdown to see the threads where you were mentioned, or a channel member to browse **their** threads instead of yours; "My own threads" brings the default list back.
+5. The header has two dropdowns: **Mode** ("All threads" by default — your own plus the ones you are mentioned in; or just "Own" / "Mentioned") and **People** ("Me" by default; check channel members to browse **their** threads too).
 
 ## Requirements
 
@@ -103,7 +103,7 @@ docker exec local-server-app-1 mmctl --local plugin add /tmp/omt.tar.gz --force
 ## How it works
 
 - `webapp/src/index.tsx` — extension registration: the App Bar button (`registerChannelHeaderButtonAction`), the RHS panel (`registerRightHandSidebarComponent`), the reducer and the websocket handlers for auto-refresh.
-- `webapp/src/components/rhs.tsx` — the panel composition (store selectors, month/author state, fetch effects); the parts live next to it: `ThreadRow.tsx`, `AuthorPicker.tsx`, `ReactionChips.tsx`, `ThreadList.tsx`, `useThreadActions.ts`, `styles.ts`.
+- `webapp/src/components/rhs.tsx` — the panel composition (store selectors, month/author state, fetch effects); the parts live next to it: `ThreadRow.tsx`, `ModePicker.tsx`, `AuthorPicker.tsx`, `menu.tsx`, `ReactionChips.tsx`, `ThreadList.tsx`, `useThreadActions.ts`, `styles.ts`.
 - `webapp/src/utils/threads.ts` — month pagination via server-side search (`Client4.searchPostsWithParams` with `from/in/after/before` in day-granularity windows), reply counts and reactions for every root via a single batched `POST /posts/ids` request (chunked by 200), and a channel stream fallback scan.
 - `webapp/src/constants.ts` — all the numeric limits (search cap, batch size, month-skip bound, resize delays) with their rationale.
 - `webapp/src/i18n/messages.ts` — the EN/RU/FR/DE dictionaries.
